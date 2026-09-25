@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+google-genai>=2.25.0
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+psutil>=6.0
+httpx>=0.27
+defusedxml>=0.7
+Send2Trash>=1.8
+keyring>=25.0

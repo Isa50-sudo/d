@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="arc">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS</title>
+  <meta name="description" content="JARVIS – persönlicher KI-Assistent" />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/hud.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+</head>
+<body>
+  <!-- Hintergrund: Raster + Vignette -->
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-vignette" aria-hidden="true"></div>
+
+  <!-- ===================== STARTUP ===================== -->
+  <section id="startup" class="startup" aria-live="polite">
+    <div class="startup-inner">
+      <div class="startup-logo">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="54" /><circle cx="60" cy="60" r="40" /><circle cx="60" cy="60" r="14" /></svg>
+      </div>
+      <div class="startup-title">INITIALIZING JARVIS<span class="blink">_</span></div>
+      <ol id="startup-lines" class="startup-lines"></ol>
+      <div id="startup-final" class="startup-final hidden">
+        <div class="startup-ready">ALL SYSTEMS READY</div>
+        <button id="startup-engage" class="btn btn-primary btn-lg">JARVIS AKTIVIEREN</button>
+        <div class="startup-hint">Klick aktiviert Mikrofon und Audioausgabe (Browser-Richtlinie).</div>
+      </div>
+      <div id="startup-setup" class="startup-setup hidden"></div>
+    </div>
+  </section>
+
+  <!-- ===================== HUD FRAME ===================== -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <span class="brand-name">J.A.R.V.I.S</span>
+      </div>
+      <nav id="nav" class="nav" aria-label="Hauptnavigation">
+        <a href="#jarvis" data-page="jarvis">JARVIS</a>
+        <a href="#world" data-page="world">WORLD</a>
+        <a href="#system" data-page="system">SYSTEM</a>
+        <a href="#memory" data-page="memory">MEMORY</a>
+        <a href="#email" data-page="email">EMAIL</a>
+        <a href="#logs" data-page="logs">LOGS</a>
+        <a href="#settings" data-page="settings">SETTINGS</a>
+      </nav>
+      <div class="indicators">
+        <span class="ind" id="ind-backend" title="Backend"><i></i>CORE</span>
+        <span class="ind" id="ind-gemini" title="Gemini"><i></i>GEMINI</span>
+        <span class="ind" id="ind-mic" title="Mikrofon"><i></i>MIC</span>
+        <span class="clock" id="clock">--:--:--</span>
+      </div>
+    </header>
+
+    <!-- Globaler Mini-Status (sichtbar auf allen Seiten außer JARVIS) -->
+    <button id="mini-core" class="mini-core" title="Zur JARVIS-Ansicht">
+      <canvas width="64" height="64"></canvas><span class="mini-state">READY</span>
+    </button>
+
+    <main id="pages">
+      <!-- ============ JARVIS ============ -->
+      <section class="page" data-page="jarvis">
+        <div class="jarvis-layout">
+          <aside class="col col-left">
+            <div class="panel">
+              <div class="panel-head"><span>SYSTEM</span><span class="dim" id="mini-os"></span></div>
+              <div class="meter" id="m-cpu"><label>CPU</label><div class="bar"><b></b></div><span class="val">–</span></div>
+              <div class="meter" id="m-ram"><label>RAM</label><div class="bar"><b></b></div><span class="val">–</span></div>
+              <div class="meter" id="m-gpu"><label>GPU</label><div class="bar"><b></b></div><span class="val">–</span></div>
+              <div class="meter" id="m-disk"><label>DISK</label><div class="bar"><b></b></div><span class="val">–</span></div>
+              <div class="kv"><span>NET ↓</span><span id="m-down">–</span></div>
+              <div class="kv"><span>NET ↑</span><span id="m-up">–</span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><span>DATUM</span></div>
+              <div class="big-time" id="big-time">--:--</div>
+              <div class="dim" id="big-date"></div>
+            </div>
+            <div class="panel grow">
+              <div class="panel-head"><span>ERINNERUNGEN</span></div>
+              <ul class="list compact" id="reminder-list"><li class="dim">Keine offenen Erinnerungen</li></ul>
+            </div>
+          </aside>
+
+          <div class="col col-center">
+            <div class="core-wrap" id="core-wrap">
+              <canvas id="core-canvas"></canvas>
+              <button class="core-hit" id="core-hit" aria-label="JARVIS aktivieren"></button>
+            </div>
+            <div class="core-status">
+              <div class="core-name">JARVIS</div>
+              <div class="core-state" id="core-state">READY</div>
+              <div class="core-hint" id="core-hint"></div>
+            </div>
+            <div class="subtitles" id="subtitles">
+              <div class="sub sub-user" id="sub-user"></div>
+              <div class="sub sub-jarvis" id="sub-jarvis"></div>
+            </div>
+            <div class="controls">
+              <div class="mode-switch" id="mode-switch" role="radiogroup" aria-label="Aktivierungsmodus">
+                <button data-mode="wake_word" role="radio">WAKE WORD</button>
+                <button data-mode="continuous" role="radio">OFFEN</button>
+                <button data-mode="push_to_talk" role="radio">PUSH-TO-TALK</button>
+              </div>
+              <button class="btn btn-ghost" id="btn-mute" title="Mikrofon an/aus (M)">MIC AUS</button>
+              <button class="btn btn-ghost" id="btn-chat-toggle" title="Textchat (T)">TEXT</button>
+            </div>
+            <form class="chat" id="chat" autocomplete="off">
+              <div class="chat-log" id="chat-log"></div>
+              <div class="chat-input">
+                <input id="chat-text" type="text" maxlength="4000" placeholder="Nachricht an JARVIS …" aria-label="Nachricht" />
+                <button class="btn btn-primary" type="submit">SENDEN</button>
+              </div>
+            </form>
+          </div>
+
+          <aside class="col col-right">
+            <div class="panel grow">
+              <div class="panel-head"><span>AKTIVITÄT</span><span class="dim" id="activity-count"></span></div>
+              <ul class="feed" id="activity-feed"></ul>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><span>QUELLEN</span></div>
+              <ul class="list sources" id="source-list"><li class="dim">Noch keine externen Quellen abgerufen</li></ul>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><span>NEWS</span><button class="link" id="news-refresh">↻</button></div>
+              <ul class="list news" id="news-list"><li class="dim">Lade …</li></ul>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ============ WORLD ============ -->
+      <section class="page" data-page="world">
+        <div class="world-layout">
+          <div class="globe-wrap" id="globe"><div class="globe-status dim" id="globe-status">Globus wird geladen …</div></div>
+          <aside class="world-side">
+            <div class="panel">
+              <div class="panel-head"><span>ORT SUCHEN</span></div>
+              <form id="world-search" class="row" autocomplete="off">
+                <input id="world-query" placeholder="z. B. Washington" />
+                <button class="btn btn-primary">FLIEGEN</button>
+              </form>
+              <div class="dim small">Oder sag: „Jarvis, zeig mir Washington.“</div>
+            </div>
+            <div class="panel grow">
+              <div class="panel-head"><span>MARKIERUNGEN</span><button class="link" id="world-clear">LEEREN</button></div>
+              <ul class="list" id="marker-list"><li class="dim">Keine Markierungen</li></ul>
+            </div>
+            <div class="panel" id="world-info-panel">
+              <div class="panel-head"><span>FOKUS</span></div>
+              <div id="world-info" class="dim">–</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ============ SYSTEM ============ -->
+      <section class="page" data-page="system">
+        <div class="grid-system">
+          <div class="panel span-2">
+            <div class="panel-head"><span>CPU</span><span class="dim" id="sys-cpu-info"></span></div>
+            <div class="sys-big"><span id="sys-cpu-val">–</span><small>%</small></div>
+            <canvas class="spark" id="spark-cpu" height="70"></canvas>
+            <div class="cores" id="sys-cores"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>ARBEITSSPEICHER</span></div>
+            <div class="sys-big"><span id="sys-ram-val">–</span><small>%</small></div>
+            <canvas class="spark" id="spark-ram" height="70"></canvas>
+            <div class="kv"><span>Belegt</span><span id="sys-ram-used">–</span></div>
+            <div class="kv"><span>Swap</span><span id="sys-swap">–</span></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>GPU / VRAM</span></div>
+            <div id="sys-gpu" class="dim">–</div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>NETZWERK</span></div>
+            <canvas class="spark" id="spark-net" height="70"></canvas>
+            <div class="kv"><span>Download</span><span id="sys-down">–</span></div>
+            <div class="kv"><span>Upload</span><span id="sys-up">–</span></div>
+            <div id="sys-ifaces" class="small dim"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>LAUFWERKE</span></div>
+            <div id="sys-disks"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>SENSOREN</span></div>
+            <div id="sys-temps" class="dim">–</div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>SYSTEM</span></div>
+            <div id="sys-info" class="small"></div>
+          </div>
+          <div class="panel span-2">
+            <div class="panel-head"><span>PROZESSE</span><span class="dim">Top nach CPU</span></div>
+            <table class="table" id="sys-procs"><thead><tr><th>PID</th><th>Name</th><th>CPU %</th><th>RAM %</th></tr></thead><tbody></tbody></table>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>DIENSTE</span></div>
+            <div class="kv"><span>Backend</span><span id="svc-backend">–</span></div>
+            <div class="kv"><span>Gemini</span><span id="svc-gemini">–</span></div>
+            <div class="kv"><span>Modell</span><span id="svc-model">–</span></div>
+            <div class="kv"><span>Systemzeit</span><span id="svc-time">–</span></div>
+            <div class="kv"><span>Uptime</span><span id="svc-uptime">–</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ MEMORY ============ -->
+      <section class="page" data-page="memory">
+        <div class="grid-2">
+          <div class="panel grow">
+            <div class="panel-head"><span>LANGZEIT-MEMORY</span><button class="link danger" id="mem-clear">ALLE LÖSCHEN</button></div>
+            <form id="mem-add" class="row" autocomplete="off">
+              <select id="mem-cat"><option value="fact">Fakt</option><option value="preference">Präferenz</option><option value="event">Ereignis</option><option value="note">Notiz</option></select>
+              <input id="mem-text" placeholder="Neue Erinnerung hinzufügen …" maxlength="1000" />
+              <button class="btn btn-primary">SPEICHERN</button>
+            </form>
+            <input id="mem-search" class="search" placeholder="Suchen …" />
+            <ul class="list mem-list" id="mem-list"></ul>
+          </div>
+          <div class="panel grow">
+            <div class="panel-head"><span>KURZZEIT-KONTEXT</span><button class="link danger" id="conv-clear">LÖSCHEN</button></div>
+            <div class="dim small">Nur im Arbeitsspeicher – wird nicht dauerhaft gespeichert.</div>
+            <ul class="list conv-list" id="conv-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ EMAIL ============ -->
+      <section class="page" data-page="email">
+        <div id="email-setup" class="panel hidden"></div>
+        <div class="grid-email" id="email-main">
+          <div class="panel grow">
+            <div class="panel-head"><span>POSTEINGANG</span><span><label class="small"><input type="checkbox" id="mail-unread" /> nur ungelesen</label> <button class="link" id="mail-refresh">↻</button></span></div>
+            <input id="mail-search" class="search" placeholder="Suchen (Betreff/Absender) …" />
+            <ul class="list mail-list" id="mail-list"></ul>
+          </div>
+          <div class="panel grow">
+            <div class="panel-head"><span>NACHRICHT</span></div>
+            <div id="mail-view" class="mail-view dim">Wähle eine E-Mail aus.</div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>VERFASSEN</span></div>
+            <form id="mail-compose" class="stack" autocomplete="off">
+              <input id="mc-to" placeholder="An" />
+              <input id="mc-subject" placeholder="Betreff" />
+              <textarea id="mc-body" rows="8" placeholder="Nachricht"></textarea>
+              <div class="row">
+                <button type="button" class="btn btn-ghost" id="mc-draft">ALS ENTWURF</button>
+                <button type="submit" class="btn btn-primary">SENDEN …</button>
+              </div>
+              <div class="dim small">Versand erfordert immer eine Bestätigung.</div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ LOGS ============ -->
+      <section class="page" data-page="logs">
+        <div class="panel grow full">
+          <div class="panel-head">
+            <span>SYSTEMPROTOKOLL</span>
+            <span class="row">
+              <select id="log-level"><option value="">Alle Stufen</option><option value="info">Info</option><option value="success">Erfolg</option><option value="warning">Warnung</option><option value="error">Fehler</option></select>
+              <select id="log-cat"><option value="">Alle Kategorien</option></select>
+              <label class="small"><input type="checkbox" id="log-follow" checked /> folgen</label>
+              <button class="link" id="log-clear">LEEREN</button>
+            </span>
+          </div>
+          <div class="log-view" id="log-view"></div>
+        </div>
+      </section>
+
+      <!-- ============ SETTINGS ============ -->
+      <section class="page" data-page="settings">
+        <form id="settings-form" class="settings" autocomplete="off"></form>
+      </section>
+    </main>
+  </div>
+
+  <!-- Bestätigungsdialog -->
+  <div id="confirm" class="confirm hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="confirm-box">
+      <div class="confirm-tag">WAITING FOR CONFIRMATION</div>
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-summary"></p>
+      <pre id="confirm-details"></pre>
+      <div class="confirm-timer"><b id="confirm-bar"></b></div>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost btn-lg" id="confirm-no">ABBRECHEN</button>
+        <button class="btn btn-danger btn-lg" id="confirm-yes">AUSFÜHREN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

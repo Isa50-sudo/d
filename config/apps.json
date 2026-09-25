@@ -1,0 +1,115 @@
+{
+  "_comment": "Bekannte Programme für open_application / close_application. Eigene Einträge in config/apps.local.json ergänzen (gleiches Format, überschreibt diese Datei).",
+  "spotify": {
+    "aliases": ["spotify"],
+    "windows": {"uri": "spotify:"},
+    "darwin": {"app": "Spotify"},
+    "linux": {"cmd": ["spotify"]},
+    "process_names": ["spotify", "spotify.exe"]
+  },
+  "chrome": {
+    "aliases": ["chrome", "google chrome"],
+    "windows": {"start": "chrome"},
+    "darwin": {"app": "Google Chrome"},
+    "linux": {"cmd": ["google-chrome"]},
+    "process_names": ["chrome", "chrome.exe", "google chrome", "google-chrome"]
+  },
+  "firefox": {
+    "aliases": ["firefox"],
+    "windows": {"start": "firefox"},
+    "darwin": {"app": "Firefox"},
+    "linux": {"cmd": ["firefox"]},
+    "process_names": ["firefox", "firefox.exe"]
+  },
+  "edge": {
+    "aliases": ["edge", "microsoft edge"],
+    "windows": {"start": "msedge"},
+    "darwin": {"app": "Microsoft Edge"},
+    "linux": {"cmd": ["microsoft-edge"]},
+    "process_names": ["msedge", "msedge.exe", "microsoft edge"]
+  },
+  "vscode": {
+    "aliases": ["vscode", "vs code", "visual studio code", "code"],
+    "windows": {"start": "code"},
+    "darwin": {"app": "Visual Studio Code"},
+    "linux": {"cmd": ["code"]},
+    "process_names": ["code", "code.exe", "electron"]
+  },
+  "explorer": {
+    "aliases": ["explorer", "datei explorer", "dateiexplorer", "finder", "dateimanager", "files"],
+    "windows": {"start": "explorer"},
+    "darwin": {"app": "Finder"},
+    "linux": {"cmd": ["xdg-open", "~"]},
+    "process_names": []
+  },
+  "notepad": {
+    "aliases": ["notepad", "editor", "texteditor", "text editor"],
+    "windows": {"start": "notepad"},
+    "darwin": {"app": "TextEdit"},
+    "linux": {"cmd": ["gnome-text-editor"]},
+    "process_names": ["notepad.exe", "textedit", "gnome-text-editor"]
+  },
+  "calculator": {
+    "aliases": ["rechner", "taschenrechner", "calculator", "calc"],
+    "windows": {"start": "calc"},
+    "darwin": {"app": "Calculator"},
+    "linux": {"cmd": ["gnome-calculator"]},
+    "process_names": ["calculatorapp.exe", "calculator", "gnome-calculator"]
+  },
+  "terminal": {
+    "aliases": ["terminal", "konsole", "eingabeaufforderung", "powershell"],
+    "windows": {"start": "wt"},
+    "darwin": {"app": "Terminal"},
+    "linux": {"cmd": ["x-terminal-emulator"]},
+    "process_names": []
+  },
+  "discord": {
+    "aliases": ["discord"],
+    "windows": {"uri": "discord:"},
+    "darwin": {"app": "Discord"},
+    "linux": {"cmd": ["discord"]},
+    "process_names": ["discord", "discord.exe"]
+  },
+  "steam": {
+    "aliases": ["steam"],
+    "windows": {"uri": "steam:"},
+    "darwin": {"app": "Steam"},
+    "linux": {"cmd": ["steam"]},
+    "process_names": ["steam", "steam.exe"]
+  },
+  "outlook": {
+    "aliases": ["outlook"],
+    "windows": {"start": "outlook"},
+    "darwin": {"app": "Microsoft Outlook"},
+    "linux": {"cmd": []},
+    "process_names": ["outlook.exe", "microsoft outlook"]
+  },
+  "word": {
+    "aliases": ["word", "microsoft word"],
+    "windows": {"start": "winword"},
+    "darwin": {"app": "Microsoft Word"},
+    "linux": {"cmd": ["libreoffice", "--writer"]},
+    "process_names": ["winword.exe", "microsoft word"]
+  },
+  "excel": {
+    "aliases": ["excel", "microsoft excel"],
+    "windows": {"start": "excel"},
+    "darwin": {"app": "Microsoft Excel"},
+    "linux": {"cmd": ["libreoffice", "--calc"]},
+    "process_names": ["excel.exe", "microsoft excel"]
+  },
+  "settings": {
+    "aliases": ["einstellungen", "systemeinstellungen", "settings"],
+    "windows": {"uri": "ms-settings:"},
+    "darwin": {"app": "System Settings"},
+    "linux": {"cmd": ["gnome-control-center"]},
+    "process_names": []
+  },
+  "taskmanager": {
+    "aliases": ["task manager", "taskmanager", "aktivitätsanzeige", "systemmonitor"],
+    "windows": {"start": "taskmgr"},
+    "darwin": {"app": "Activity Monitor"},
+    "linux": {"cmd": ["gnome-system-monitor"]},
+    "process_names": []
+  }
+}
