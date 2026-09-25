@@ -26,7 +26,7 @@ class AISettings(BaseModel):
     # Ollama-Modell (muss Tool-Calling unterstützen, z. B. qwen3, llama3.1, mistral-nemo)
     model: str = "qwen3:8b"
     temperature: float = Field(default=0.6, ge=0.0, le=2.0)
-    context_tokens: int = Field(default=8192, ge=2048, le=131072)
+    context_tokens: int = Field(default=16384, ge=2048, le=131072)
     # Reasoning-Modelle (qwen3, deepseek-r1): "Denken" abschalten = schnellere Antworten
     disable_thinking: bool = True
     # Spracherkennung (faster-whisper): tiny, base, small, medium, large-v3, large-v3-turbo
@@ -182,6 +182,9 @@ class SettingsStore:
                 voice.pop("name", None)
             if isinstance(raw.get("ai"), dict) and "live_model" in raw["ai"]:
                 raw["ai"] = {}
+            # 8192 war zu knapp für Systemanweisung + Tool-Beschreibungen (~5,5k Tokens)
+            if isinstance(raw.get("ai"), dict) and raw["ai"].get("context_tokens") == 8192:
+                raw["ai"]["context_tokens"] = 16384
             merged = _deep_merge(defaults.model_dump(mode="json"), raw)
             return UserSettings.model_validate(merged)
         except (OSError, json.JSONDecodeError, ValidationError) as exc:

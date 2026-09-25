@@ -87,6 +87,9 @@ class SpeechToText:
     def loaded(self) -> bool:
         return self._model is not None
 
+    def is_ready(self, model_name: str, device: str) -> bool:
+        return self._model is not None and self._model_key == (model_name, device)
+
     def _create(self, model_name: str, device: str):  # type: ignore[no-untyped-def]
         from faster_whisper import WhisperModel
 

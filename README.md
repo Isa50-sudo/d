@@ -318,6 +318,7 @@ Getestet werden u. a. das Permission-System (inkl. nicht überschreibbarer Regel
 | „Die Stimme … ist nicht installiert“ | `python scripts/download_models.py` |
 | Spracherkennung lädt nicht | `python scripts/download_models.py` (braucht einmalig Internet) |
 | `cublas64_12.dll is not found` / GPU-Hinweis | JARVIS wechselt automatisch auf die CPU. Für GPU-Beschleunigung `install_gpu.bat` (bzw. `./install_gpu.sh`) ausführen; alternativ SETTINGS → „Rechengerät Whisper“ → CPU |
+| JARVIS bleibt bei THINKING | LOGS-Seite öffnen: Jeder Schritt steht dort mit Dauer („Spracheingabe erkannt in …“, „Ollama-Antwort nach …“). Kommt keine Zeile „Spracheingabe erkannt“, lädt Whisper noch (beim ersten Mal Download). Kommt keine „Ollama-Antwort“, läuft Ollama nicht oder das Modell ist zu groß |
 | Antworten sind langsam | kleineres Modell (`qwen3:4b`), „Denkmodus aus“ aktiv lassen, Whisper `base`, GPU nutzen |
 | „Das Mikrofon ist momentan nicht verfügbar.“ | Browser-Mikrofonfreigabe für 127.0.0.1 erlauben; Gerät in SETTINGS wählen |
 | Wake Word reagiert nicht | Chrome/Edge verwenden; sonst Kern antippen / Leertaste / Modus „Offen“ |

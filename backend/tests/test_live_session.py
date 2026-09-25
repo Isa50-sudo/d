@@ -61,6 +61,9 @@ class FakeSTT:
     async def load(self, model_name, device):
         pass
 
+    def is_ready(self, model_name, device):
+        return True
+
     async def transcribe(self, pcm, *, language, model_name, device):
         self.calls += 1
         return Transcript(self.text, self.language)
@@ -234,3 +237,59 @@ async def test_noise_is_ignored(services, fake_client):
 def test_visible_text_strips_thinking():
     assert _visible_text("<think>abc</think>Hallo") == "Hallo"
     assert _visible_text("Hallo <think>unfertig") == "Hallo "
+
+
+async def test_hanging_ollama_ends_turn_with_error(services, fake_client, monkeypatch):
+    """Früher: THINKING für immer. Jetzt: Zeitlimit, Fehlermeldung, Turn-Ende."""
+    import jarvis.ai.live_session as ls
+
+    monkeypatch.setattr(ls, "OLLAMA_FIRST_TOKEN_TIMEOUT_S", 0.2)
+
+    class Hanging(FakeAI):
+        async def chat_stream(self, **kwargs):
+            await asyncio.sleep(3600)
+            yield {}
+
+    install(services, Hanging([]))
+    session = LiveSession(services, fake_client)  # type: ignore[arg-type]
+    await session.send_text("Hallo")
+    assert await wait_for(lambda: fake_client.of("turn.complete"), timeout=3)
+    assert "nicht geantwortet" in fake_client.of("error")[0]["message"]
+    await session.close()
+
+
+async def test_unrecognized_speech_ends_turn(services, fake_client):
+    install(services, FakeAI([]), stt=FakeSTT(text=""))
+    session = LiveSession(services, fake_client)  # type: ignore[arg-type]
+    await session.ensure_started(timeout=5)
+    await session.push_audio(tone(500))
+    await session.push_audio(silence(1000))
+    assert await wait_for(lambda: fake_client.of("turn.complete"))
+    assert fake_client.of("notification")[-1]["title"] == "Nicht verstanden"
+    await session.close()
+
+
+async def test_stt_still_loading_does_not_hang(services, fake_client):
+    """Utterance während das Whisper-Modell noch lädt: Hinweis + Antwort danach."""
+    class SlowSTT(FakeSTT):
+        def __init__(self):
+            super().__init__()
+            self.ready = False
+
+        def is_ready(self, model_name, device):
+            return self.ready
+
+        async def load(self, model_name, device):
+            await asyncio.sleep(0.3)
+            self.ready = True
+
+    ai = FakeAI([[{"message": {"content": "Hallo."}, "done": True}]])
+    install(services, ai, stt=SlowSTT())
+    session = LiveSession(services, fake_client)  # type: ignore[arg-type]
+    await session.ensure_started(timeout=5)
+    await session.push_audio(tone(500))
+    await session.push_audio(silence(1000))
+    assert await wait_for(lambda: fake_client.of("turn.complete"))
+    assert any(n["title"] == "Einen Moment" for n in fake_client.of("notification"))
+    assert services.tts.spoken == [("Hallo.", "de_DE-thorsten-high")]
+    await session.close()

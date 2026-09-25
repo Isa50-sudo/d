@@ -36,6 +36,9 @@ log = logging.getLogger(__name__)
 
 _END = object()
 MAX_TOOL_ROUNDS = 6
+STT_TIMEOUT_S = 900  # inkl. einmaligem Modell-Download
+OLLAMA_FIRST_TOKEN_TIMEOUT_S = 180
+OLLAMA_CHUNK_TIMEOUT_S = 90
 AUDIO_CHUNK_BYTES = 16 * 1024
 # Satzende: . ! ? … : ; oder Zeilenumbruch, gefolgt von Leerraum
 _SENTENCE_END = re.compile(r"(?<=[.!?…:;])\s+|\n+")
@@ -223,6 +226,13 @@ class LiveSession:
         except TTSUnavailable as exc:
             self.tts_ok = False
             await self.client.send_event("error", {"message": f"{exc.user_message} JARVIS antwortet bis dahin nur als Text.", "source": "tts"})
+        self._stt_started = time.monotonic()
+        if not self.services.stt.is_ready(settings.ai.stt_model, settings.ai.stt_device):
+            self.services.events.add(
+                "voice",
+                f"Lade Spracherkennung (Whisper {settings.ai.stt_model}) – beim ersten Mal wird das Modell heruntergeladen, das kann einige Minuten dauern",
+                "info",
+            )
         self._stt_task = asyncio.create_task(self.services.stt.load(settings.ai.stt_model, settings.ai.stt_device))
         self._stt_task.add_done_callback(self._stt_loaded)
 
@@ -241,12 +251,15 @@ class LiveSession:
         if task.cancelled():
             return
         exc = task.exception()
-        if isinstance(exc, STTUnavailable):
-            self.services.events.add("voice", exc.user_message, "error")
-            asyncio.create_task(self.client.send_event("error", {"message": exc.user_message, "source": "stt"}))
-        elif exc is None:
+        if exc is not None:
+            message = exc.user_message if isinstance(exc, STTUnavailable) else f"Spracherkennung konnte nicht geladen werden ({type(exc).__name__}: {exc})"
+            log.error("Whisper-Laden fehlgeschlagen: %r", exc)
+            self.services.events.add("voice", message, "error")
+            asyncio.create_task(self.client.send_event("error", {"message": message, "source": "stt"}))
+        else:
             stt = self.services.stt
-            self.services.events.add("voice", f"Spracherkennung (Whisper) geladen – {(stt.device_in_use or 'cpu').upper()}", "success")
+            secs = time.monotonic() - getattr(self, "_stt_started", time.monotonic())
+            self.services.events.add("voice", f"Spracherkennung (Whisper) geladen – {(stt.device_in_use or 'cpu').upper()} ({secs:.1f} s)", "success")
             if stt.notice:
                 self.services.events.add("voice", stt.notice, "warning")
                 asyncio.create_task(self.client.send_event("notification", {"title": "Spracherkennung", "message": stt.notice, "level": "warning"}))
@@ -306,20 +319,38 @@ class LiveSession:
     async def _handle_utterance(self, pcm: bytes) -> None:
         settings = self.services.settings.current
         voice = VoiceProfile.from_settings(settings.voice)
+        seconds = len(pcm) / 2 / INPUT_SAMPLE_RATE
+        if not self.services.stt.is_ready(settings.ai.stt_model, settings.ai.stt_device):
+            await self.client.send_event(
+                "notification",
+                {"title": "Einen Moment", "message": "Die Spracherkennung wird noch geladen (beim ersten Mal inkl. Download). Deine Frage wird danach beantwortet.", "level": "info"},
+            )
+        started = time.monotonic()
         try:
-            if self._stt_task is not None:
-                await asyncio.shield(self._stt_task)
-            transcript = await self.services.stt.transcribe(
-                pcm,
-                language=voice.primary_language if voice.lock_language else None,
-                model_name=settings.ai.stt_model,
-                device=settings.ai.stt_device,
+            # transcribe() lädt das Modell bei Bedarf selbst – nie auf eine (evtl. abgebrochene) Lade-Task warten
+            transcript = await asyncio.wait_for(
+                self.services.stt.transcribe(
+                    pcm,
+                    language=voice.primary_language if voice.lock_language else None,
+                    model_name=settings.ai.stt_model,
+                    device=settings.ai.stt_device,
+                ),
+                timeout=STT_TIMEOUT_S,
             )
         except STTUnavailable as exc:
-            await self.client.send_event("error", {"message": exc.user_message, "source": "stt"})
-            await self.client.send_event("turn.complete", {})
+            await self._fail(exc.user_message, "stt")
             return
+        except asyncio.TimeoutError:
+            await self._fail("Die Spracherkennung hat zu lange gebraucht. Wähle in SETTINGS ein kleineres Whisper-Modell (z. B. small oder base).", "stt")
+            return
+        took = time.monotonic() - started
+        self.services.events.add(
+            "voice",
+            f"Spracheingabe ({seconds:.1f} s) erkannt in {took:.1f} s – {len(transcript.text)} Zeichen, Sprache {transcript.language or '?'}",
+            "info" if transcript.text else "warning",
+        )
         if not transcript.text:
+            await self.client.send_event("notification", {"title": "Nicht verstanden", "message": "Ich habe dich nicht verstanden – bitte noch einmal.", "level": "info"})
             await self.client.send_event("turn.complete", {})
             return
         await self.client.send_event("transcript", {"role": "user", "text": transcript.text, "final": True, "language": transcript.language})
@@ -327,6 +358,12 @@ class LiveSession:
         if settings.logging.log_transcripts:
             self.services.events.add("conversation", f"Benutzer: {transcript.text}")
         await self._respond(transcript.text, transcript.language)
+
+    async def _fail(self, message: str, source: str) -> None:
+        """Fehler sichtbar machen und den Turn sauber beenden (nie in THINKING hängen bleiben)."""
+        self.services.events.add(source if source in ("ai", "voice") else "voice", message, "error")
+        await self.client.send_event("error", {"message": message, "source": source})
+        await self.client.send_event("turn.complete", {})
 
     def _messages(self, language: str | None, voice: VoiceProfile) -> list[dict[str, Any]]:
         settings = self.services.settings.current
@@ -360,9 +397,15 @@ class LiveSession:
         spoken = ""
         self._partial = ""
         interrupted = False
+        started = time.monotonic()
         try:
             for _round in range(MAX_TOOL_ROUNDS):
                 content, calls = await self._stream_round(messages, tools, speaker, spoken)
+                self.services.events.add(
+                    "ai",
+                    f"Ollama-Antwort (Runde {_round + 1}) nach {time.monotonic() - started:.1f} s – {len(content)} Zeichen, {len(calls)} Tool-Aufruf(e)",
+                    "info",
+                )
                 spoken = (spoken + " " + content).strip() if content else spoken
                 if not calls:
                     break
@@ -375,6 +418,13 @@ class LiveSession:
             spoken = self._partial or spoken  # bis zur Unterbrechung Geschriebenes
             speaker.cancel()
             raise
+        except asyncio.TimeoutError:
+            message = (
+                f"Ollama hat nach {OLLAMA_FIRST_TOKEN_TIMEOUT_S} s nicht geantwortet. Läuft Ollama? "
+                "Evtl. ist das Modell zu groß für deinen Rechner (in SETTINGS z. B. qwen3:4b wählen)."
+            )
+            self.services.events.add("ai", message, "error")
+            await self.client.send_event("error", {"message": message, "source": "ai"})
         except OllamaError as exc:
             log.warning("Ollama-Fehler: %s", exc)
             self.services.events.add("ai", f"Ollama-Fehler: {exc.user_message}", "error")
@@ -399,31 +449,44 @@ class LiveSession:
         raw = ""
         emitted = 0  # bereits vorgelesener Anteil von `visible`
         calls: list[dict[str, Any]] = []
-        async for chunk in self.services.ai.chat_stream(
+        stream = self.services.ai.chat_stream(
             model=settings.ai.model,
             messages=messages,
             tools=tools or None,
             temperature=settings.ai.temperature,
             context_tokens=settings.ai.context_tokens,
             disable_thinking=settings.ai.disable_thinking,
-        ):
-            message = chunk.get("message") or {}
-            calls.extend(message.get("tool_calls") or [])
-            piece = message.get("content") or ""
-            if not piece:
-                continue
-            raw += piece
-            visible = _visible_text(raw)
-            # Vollständige Sätze an die Sprachausgabe geben
-            pending = visible[emitted:]
-            parts = _SENTENCE_END.split(pending)
-            if len(parts) > 1:
-                complete = pending[: len(pending) - len(parts[-1])]
-                speaker.say(complete)
-                emitted += len(complete)
-            if visible.strip():
-                self._partial = (spoken_before + " " + visible).strip()
-                await self.client.send_event("transcript", {"role": "jarvis", "text": self._partial, "final": False})
+        ).__aiter__()
+        first = True
+        try:
+            while True:
+                try:
+                    # Erste Antwort darf länger dauern (Ollama lädt das Modell in den Speicher)
+                    timeout = OLLAMA_FIRST_TOKEN_TIMEOUT_S if first else OLLAMA_CHUNK_TIMEOUT_S
+                    chunk = await asyncio.wait_for(stream.__anext__(), timeout=timeout)
+                except StopAsyncIteration:
+                    break
+                first = False
+                message = chunk.get("message") or {}
+                calls.extend(message.get("tool_calls") or [])
+                piece = message.get("content") or ""
+                if not piece:
+                    continue
+                raw += piece
+                visible = _visible_text(raw)
+                # Vollständige Sätze an die Sprachausgabe geben
+                pending = visible[emitted:]
+                parts = _SENTENCE_END.split(pending)
+                if len(parts) > 1:
+                    complete = pending[: len(pending) - len(parts[-1])]
+                    speaker.say(complete)
+                    emitted += len(complete)
+                if visible.strip():
+                    self._partial = (spoken_before + " " + visible).strip()
+                    await self.client.send_event("transcript", {"role": "jarvis", "text": self._partial, "final": False})
+        finally:
+            with contextlib.suppress(Exception):
+                await stream.aclose()
         visible = _visible_text(raw)
         speaker.say(visible[emitted:])
         return visible.strip(), calls
