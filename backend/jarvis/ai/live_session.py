@@ -245,7 +245,11 @@ class LiveSession:
             self.services.events.add("voice", exc.user_message, "error")
             asyncio.create_task(self.client.send_event("error", {"message": exc.user_message, "source": "stt"}))
         elif exc is None:
-            self.services.events.add("voice", "Spracherkennung (Whisper) geladen", "success")
+            stt = self.services.stt
+            self.services.events.add("voice", f"Spracherkennung (Whisper) geladen – {(stt.device_in_use or 'cpu').upper()}", "success")
+            if stt.notice:
+                self.services.events.add("voice", stt.notice, "warning")
+                asyncio.create_task(self.client.send_event("notification", {"title": "Spracherkennung", "message": stt.notice, "level": "warning"}))
 
     async def _on_vad(self, kind: str, pcm: bytes | None) -> None:
         if kind == "start":

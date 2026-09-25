@@ -317,6 +317,7 @@ Getestet werden u. a. das Permission-System (inkl. nicht überschreibbarer Regel
 | „… unterstützt kein Tool-Calling“ | Modell mit Tools wählen, z. B. `qwen3:8b` |
 | „Die Stimme … ist nicht installiert“ | `python scripts/download_models.py` |
 | Spracherkennung lädt nicht | `python scripts/download_models.py` (braucht einmalig Internet) |
+| `cublas64_12.dll is not found` / GPU-Hinweis | JARVIS wechselt automatisch auf die CPU. Für GPU-Beschleunigung `install_gpu.bat` (bzw. `./install_gpu.sh`) ausführen; alternativ SETTINGS → „Rechengerät Whisper“ → CPU |
 | Antworten sind langsam | kleineres Modell (`qwen3:4b`), „Denkmodus aus“ aktiv lassen, Whisper `base`, GPU nutzen |
 | „Das Mikrofon ist momentan nicht verfügbar.“ | Browser-Mikrofonfreigabe für 127.0.0.1 erlauben; Gerät in SETTINGS wählen |
 | Wake Word reagiert nicht | Chrome/Edge verwenden; sonst Kern antippen / Leertaste / Modus „Offen“ |
