@@ -1,7 +1,7 @@
 """Memory-System.
 
 * Kurzzeit-Kontext: ConversationBuffer (RAM) – letzte Gesprächsrunden, wird
-  bei einer neuen Gemini-Session als Kontext mitgegeben. Nicht persistent.
+  bei jeder Anfrage an das Sprachmodell als Kontext mitgegeben. Nicht persistent.
 * Langzeit-Memory: SQLite (data/jarvis.db) – NUR explizit gespeicherte Fakten,
   Präferenzen und Ereignisse. Jederzeit einsehbar und löschbar.
 """

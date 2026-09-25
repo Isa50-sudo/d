@@ -1,4 +1,4 @@
-"""Test-Setup: isolierte Daten-/Log-Ordner, kein echter API-Key, keine echte .env."""
+"""Test-Setup: isolierte Daten-/Log-Ordner, kein echtes Ollama."""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,10 @@ from pathlib import Path
 _TMP = Path(tempfile.mkdtemp(prefix="jarvis-test-"))
 os.environ["JARVIS_DATA_DIR"] = str(_TMP / "data")
 os.environ["JARVIS_LOG_DIR"] = str(_TMP / "logs")
-os.environ["GEMINI_API_KEY"] = "test-key-not-real-000000"
+os.environ["OLLAMA_HOST"] = "http://127.0.0.1:1"  # nie ein echtes Ollama in Tests
+# Unabhängig von einer lokalen .env
+for _key, _value in {"VOICE_NAME": "de_DE-thorsten-high", "VOICE_NAME_EN": "en_GB-alan-medium", "OLLAMA_MODEL": "qwen3:8b", "VOICE_LANGUAGE": "de-DE", "ACCESS_LEVEL": "LIMITED"}.items():
+    os.environ[_key] = _value
 os.environ["ALLOWED_PATHS"] = str(_TMP / "sandbox")
 (_TMP / "sandbox").mkdir(parents=True, exist_ok=True)
 (_TMP / "logs").mkdir(parents=True, exist_ok=True)
@@ -33,6 +36,7 @@ async def services():
     svc = Services(get_env())
     yield svc
     await svc.web.close()
+    await svc.ai.close()
     svc.memory.close()
 
 

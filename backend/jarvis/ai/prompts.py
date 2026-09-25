@@ -16,7 +16,6 @@ def build_system_instruction(
     wake_word: str,
     memories: str,
     recent_conversation: str,
-    google_search: bool,
     web_enabled: bool,
     access_level: str,
 ) -> str:
@@ -39,13 +38,14 @@ PERSÖNLICHKEIT
 
 SPRACHE
 - {lang_rule}
-- Antworten sind für das Hören gemacht: kurz, klar, natürlich gesprochen. Meist 1–3 Sätze.
+- Deine Antworten werden vorgelesen: kurz, klar, natürlich gesprochen. Meist 1–3 Sätze.
   Keine Markdown-Formatierung, keine Aufzählungszeichen, keine URLs vorlesen, keine Emojis.
 - Zahlen, Uhrzeiten und Einheiten so formulieren, wie man sie ausspricht.
 
 WERKZEUGE (sehr wichtig)
 - Für jede Aktion auf dem Computer oder im Browser MUSST du das passende Werkzeug aufrufen.
   Behaupte niemals, etwas getan zu haben, ohne dass ein Werkzeug erfolgreich (status "ok") zurückgemeldet hat.
+- Rufe Werkzeuge ausschließlich über die Funktionsschnittstelle auf – schreibe niemals JSON oder Funktionsaufrufe in deine Antwort.
 - Du kannst keinen beliebigen Code und keine Shell-Befehle ausführen – nur die bereitgestellten Werkzeuge.
 - Antwortet ein Werkzeug mit status "denied", "cancelled" oder "error", sag das ehrlich und kurz,
   z. B. "Ich konnte diese Aktion nicht ausführen." plus den Grund in einfachen Worten.
@@ -62,8 +62,7 @@ AKTUELLE INFORMATIONEN
 - Unterscheide strikt zwischen deinem Trainingswissen und aktuellen Informationen.
 - Für alles, was aktuell sein muss (Nachrichten, Wetter, Kurse, Ergebnisse, "wer ist aktuell …",
   heutige Ereignisse), MUSST du eine aktuelle Quelle nutzen:"""
-        + (" die Google-Suche," if google_search and web_enabled else "")
-        + (" get_news, get_weather, wikipedia_lookup oder read_webpage." if web_enabled else " (Webzugriff ist deaktiviert – sage das dem Benutzer).")
+        + (" web_search (Websuche), get_news, get_weather, wikipedia_lookup oder read_webpage." if web_enabled else " (Webzugriff ist deaktiviert – sage das dem Benutzer).")
         + """
 - Nenne bei aktuellen Informationen kurz Quelle und Zeitpunkt ("laut tagesschau von heute Morgen …").
 - Erfinde niemals Live-Daten. Wenn du keine aktuelle Quelle erreichen kannst, sag es ehrlich.

@@ -1,63 +1,51 @@
 """Stimmkonfiguration und Abstraktion der Sprachausgabe.
 
-Aktuell spricht JARVIS über die native Audioausgabe der Gemini Live API
-(Spracherkennung, Denken und Sprechen in einem Modell = geringste Latenz,
-natürlichste Stimme, Unterbrechbarkeit).
+JARVIS spricht über eine lokale Kette:
+    Mikrofon -> VAD -> faster-whisper (STT) -> Ollama (LLM + Tools) -> Piper (TTS)
 
-Austauschbarkeit: Ein anderer Anbieter (z. B. ElevenLabs, Azure, lokales
-Piper-TTS) wird als weiterer ``VoiceBackend`` implementiert – etwa ein
-Kaskaden-Backend "Live-Transkription -> Textmodell -> externes TTS". Der
-WebSocket-Vertrag zum Browser (PCM16 mono, Sample-Rate im Event
-``voice.format``) bleibt dabei identisch.
+Austauschbarkeit: Die Sprachausgabe steckt in voice/tts.py (``TextToSpeech``).
+Ein anderer Anbieter (z. B. Coqui XTTS, ElevenLabs, Azure) wird als Klasse mit
+derselben Methode ``synthesize(text, voice=, speed=) -> PCM16`` eingebunden.
+Der WebSocket-Vertrag zum Browser (PCM16 mono, Sample-Rate im hello-Event)
+bleibt dabei identisch.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
 
-from google.genai import types
-
 from jarvis.config.user_settings import VoiceSettings
 
-# Prebuilt-Voices der Gemini Live API mit Charakterbeschreibung.
-# Die für JARVIS empfohlenen tiefen, ruhigen, männlich klingenden Stimmen
-# sind markiert. (Quelle: Gemini API Speech/Voice-Dokumentation)
+# Empfohlene Piper-Stimmen (https://huggingface.co/rhasspy/piper-voices).
+# "high"/"medium" = bessere Qualität. Für JARVIS: männlich, ruhig, tief.
 VOICES: list[dict[str, str | bool]] = [
-    {"name": "Charon", "character": "informativ, tief, ruhig", "gender": "male", "recommended": True},
-    {"name": "Orus", "character": "fest, sonor", "gender": "male", "recommended": True},
-    {"name": "Iapetus", "character": "klar, gelassen", "gender": "male", "recommended": True},
-    {"name": "Algenib", "character": "rau, tief", "gender": "male", "recommended": True},
-    {"name": "Schedar", "character": "gleichmäßig, ruhig", "gender": "male", "recommended": True},
-    {"name": "Umbriel", "character": "entspannt, warm", "gender": "male", "recommended": True},
-    {"name": "Rasalgethi", "character": "informativ", "gender": "male", "recommended": False},
-    {"name": "Sadaltager", "character": "kenntnisreich", "gender": "male", "recommended": False},
-    {"name": "Alnilam", "character": "bestimmt", "gender": "male", "recommended": False},
-    {"name": "Enceladus", "character": "hauchig, weich", "gender": "male", "recommended": False},
-    {"name": "Fenrir", "character": "lebhaft", "gender": "male", "recommended": False},
-    {"name": "Puck", "character": "fröhlich", "gender": "male", "recommended": False},
-    {"name": "Achird", "character": "freundlich", "gender": "male", "recommended": False},
-    {"name": "Zubenelgenubi", "character": "locker", "gender": "male", "recommended": False},
-    {"name": "Kore", "character": "fest", "gender": "female", "recommended": False},
-    {"name": "Aoede", "character": "luftig", "gender": "female", "recommended": False},
-    {"name": "Leda", "character": "jugendlich", "gender": "female", "recommended": False},
-    {"name": "Zephyr", "character": "hell", "gender": "female", "recommended": False},
-    {"name": "Sulafat", "character": "warm", "gender": "female", "recommended": False},
+    {"name": "de_DE-thorsten-high", "character": "männlich, klar, ruhig", "language": "de", "recommended": True},
+    {"name": "de_DE-thorsten-medium", "character": "männlich, klar (schneller)", "language": "de", "recommended": False},
+    {"name": "de_DE-karlsson-low", "character": "männlich, tief", "language": "de", "recommended": False},
+    {"name": "de_DE-pavoque-low", "character": "männlich, weich", "language": "de", "recommended": False},
+    {"name": "en_GB-alan-medium", "character": "male, British, calm", "language": "en", "recommended": True},
+    {"name": "en_GB-northern_english_male-medium", "character": "male, British, deep", "language": "en", "recommended": False},
+    {"name": "en_US-ryan-high", "character": "male, American, clear", "language": "en", "recommended": False},
+    {"name": "en_US-joe-medium", "character": "male, American, warm", "language": "en", "recommended": False},
 ]
 
 SPEED_HINTS = {
-    "slow": "Sprich langsam und bedächtig, mit Pausen zwischen den Gedanken.",
-    "calm": "Sprich in ruhigem, gemäßigtem Tempo – gelassen und souverän, nie hektisch.",
-    "normal": "Sprich in natürlichem Gesprächstempo.",
-    "fast": "Sprich zügig und effizient, aber deutlich.",
+    "slow": "Formuliere ruhig und bedächtig.",
+    "calm": "Formuliere gelassen und souverän, nie hektisch.",
+    "normal": "Formuliere natürlich.",
+    "fast": "Formuliere knapp und effizient.",
 }
+# Piper length_scale: >1 = langsamer
+SPEED_LENGTH_SCALE = {"slow": 1.2, "calm": 1.08, "normal": 1.0, "fast": 0.88}
 
 INPUT_SAMPLE_RATE = 16000
-OUTPUT_SAMPLE_RATE = 24000
+OUTPUT_SAMPLE_RATE = 22050
 
 
 @dataclass(frozen=True)
 class VoiceProfile:
     name: str
+    name_en: str
     language: str
     speed: str
     style: str
@@ -65,35 +53,29 @@ class VoiceProfile:
 
     @classmethod
     def from_settings(cls, s: VoiceSettings) -> "VoiceProfile":
-        return cls(s.name, s.language, s.speed, s.style, s.lock_language)
+        return cls(s.name, s.name_en, s.language, s.speed, s.style, s.lock_language)
 
-    def speech_config(self) -> types.SpeechConfig:
-        kwargs: dict = {
-            "voice_config": types.VoiceConfig(
-                prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.name)
-            )
-        }
-        # Ohne language_code erkennt das native Audiomodell die Sprache selbst
-        # und antwortet z. B. auf Englisch, wenn Englisch gesprochen wird.
-        if self.lock_language:
-            kwargs["language_code"] = self.language
-        return types.SpeechConfig(**kwargs)
+    @property
+    def primary_language(self) -> str:
+        return self.language.split("-")[0].lower()
+
+    def voice_for(self, language: str | None) -> str:
+        """Englische Stimme, wenn auf Englisch geantwortet wird – sonst die Hauptstimme."""
+        if not self.lock_language and language == "en" and self.primary_language != "en":
+            return self.name_en
+        return self.name
 
     def style_instruction(self) -> str:
         return (
-            f"Deine Stimme und Sprechweise: {self.style}. {SPEED_HINTS.get(self.speed, SPEED_HINTS['calm'])} "
+            f"Deine Art zu sprechen: {self.style}. {SPEED_HINTS.get(self.speed, SPEED_HINTS['calm'])} "
             "Klinge wie ein erfahrener, menschlicher, persönlicher Assistent – warm, beruhigend, präzise. "
             "Niemals roboterhaft, übertrieben begeistert oder theatralisch."
         )
 
 
 class VoiceBackend(Protocol):
-    """Vertrag für Sprach-Backends (Gemini Live, später z. B. Kaskade mit externem TTS)."""
+    """Vertrag für Sprach-Sitzungen (aktuell: lokale Kette Whisper -> Ollama -> Piper)."""
 
-    input_sample_rate: int
-    output_sample_rate: int
-
-    async def start(self) -> None: ...
     async def push_audio(self, pcm16: bytes) -> None: ...
     async def end_audio(self) -> None: ...
     async def send_text(self, text: str) -> None: ...

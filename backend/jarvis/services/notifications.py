@@ -62,7 +62,7 @@ class NotificationService:
             try:
                 if self.services.hub.client_count:
                     snap = await self.services.monitor.snapshot_async()
-                    snap["gemini"] = {"state": self.services.gemini.state, "message": self.services.gemini.last_error}
+                    snap["ai"] = {"state": self.services.ai.state, "message": self.services.ai.last_error}
                     if tick % 3 == 0:
                         snap["processes"] = await asyncio.to_thread(self.services.monitor.processes, 12)
                     await self.services.hub.broadcast("system.stats", {"stats": snap})

@@ -1,6 +1,6 @@
 """Grundbausteine des Tool-Systems.
 
-Ein Tool ist eine klar definierte, validierte Aktion. Gemini kann ein Tool
+Ein Tool ist eine klar definierte, validierte Aktion. Das Sprachmodell kann ein Tool
 nur per strukturiertem Function Call *anfordern* – ob und wie es ausgeführt
 wird, entscheidet ausschließlich das Backend (ToolManager + PermissionManager).
 Es gibt bewusst KEIN Tool für beliebigen Code oder beliebige Shell-Befehle.
@@ -31,7 +31,7 @@ class NoArgs(BaseModel):
 
 
 class ToolError(Exception):
-    """Fehler mit benutzerfreundlicher Meldung (wird an Gemini/UI weitergegeben)."""
+    """Fehler mit benutzerfreundlicher Meldung (wird an das Sprachmodell/UI weitergegeben)."""
 
     def __init__(self, user_message: str, *, detail: str | None = None) -> None:
         super().__init__(detail or user_message)
@@ -90,7 +90,7 @@ class Tool:
 
 
 def _clean_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Entfernt für Gemini irrelevante Pydantic-Felder (title) rekursiv."""
+    """Entfernt für das Sprachmodell irrelevante Pydantic-Felder (title) rekursiv."""
     if isinstance(schema, dict):
         return {
             k: _clean_schema(v)

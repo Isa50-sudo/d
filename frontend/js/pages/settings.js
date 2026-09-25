@@ -28,8 +28,8 @@ function field(path, label, type, opts = {}) {
     control = `<select id="${id}" data-path="${path}">${opts.options.map(([v, l]) => `<option value="${escapeHtml(v)}" ${String(v) === String(value) ? "selected" : ""}>${escapeHtml(l)}</option>`).join("")}</select>`;
   } else if (type === "check") {
     return `<label class="field check"><span>${label}</span><input type="checkbox" id="${id}" data-path="${path}" data-type="bool" ${value ? "checked" : ""} />${opts.help ? `<small>${opts.help}</small>` : ""}</label>`;
-  } else if (type === "number") {
-    control = `<input type="number" id="${id}" data-path="${path}" data-type="int" value="${escapeHtml(value)}" min="${opts.min ?? ""}" max="${opts.max ?? ""}" />`;
+  } else if (type === "number" || type === "float") {
+    control = `<input type="number" id="${id}" data-path="${path}" data-type="${type === "float" ? "float" : "int"}" value="${escapeHtml(value)}" min="${opts.min ?? ""}" max="${opts.max ?? ""}" step="${opts.step ?? 1}" />`;
   } else {
     control = `<input type="text" id="${id}" data-path="${path}" value="${escapeHtml(value ?? "")}" ${opts.list ? `list="${opts.list}"` : ""} />`;
   }
@@ -74,7 +74,12 @@ async function render() {
   const [data, tools] = await Promise.all([api.get("/api/settings"), api.get("/api/tools")]);
   meta = data;
   draft = structuredClone(data.settings);
-  const voices = data.voices.map((v) => [v.name, `${v.name} – ${v.character}${v.recommended ? " ★" : ""}`]);
+  const voices = (lang) => {
+    const list = data.voices.filter((v) => v.language === lang || v.name.startsWith(lang));
+    const current = lang === "en" ? draft.voice.name_en : draft.voice.name;
+    if (!list.some((v) => v.name === current)) list.unshift({ name: current, character: "benutzerdefiniert", installed: false });
+    return list.map((v) => [v.name, `${v.name} – ${v.character}${v.recommended ? " ★" : ""}${v.installed ? "" : " (nicht installiert)"}`]);
+  };
   const models = data.models.map((m) => m.id);
   let mics = [["", "Standardmikrofon"]];
   try {
@@ -83,14 +88,18 @@ async function render() {
 
   $("settings-form").innerHTML = `
     <datalist id="model-list">${models.map((m) => `<option value="${escapeHtml(m)}">`).join("")}</datalist>
-    ${panel("GEMINI", [
-      field("ai.live_model", "Live-Modell", "text", { list: "model-list", help: data.models.map((m) => `${m.id}: ${m.label.split("–")[1] || ""}`).join(" · ") }),
-      field("ai.google_search", "Google-Suche (Grounding)", "check"),
-      field("ai.session_idle_timeout_s", "Session-Timeout (s)", "number", { min: 30, max: 3600, help: "Inaktive Gemini-Verbindung wird danach geschlossen (spart Kosten)." }),
-      `<div class="kv"><span>API-Key</span><span>${data.env.gemini_configured ? "hinterlegt (.env)" : "FEHLT – in .env eintragen"}</span></div>`,
+    ${panel("KI · OLLAMA", [
+      field("ai.model", "Modell", "text", { list: "model-list", help: data.installed_models.length ? `Installiert: ${data.installed_models.map(escapeHtml).join(", ")}` : "Keine Modelle gefunden – läuft Ollama? Installieren: ollama pull qwen3:8b" }),
+      field("ai.temperature", "Kreativität (Temperatur)", "float", { min: 0, max: 2, step: 0.1 }),
+      field("ai.context_tokens", "Kontextlänge (Tokens)", "number", { min: 2048, max: 131072, help: "Mehr = längeres Gedächtnis im Gespräch, braucht mehr RAM/VRAM." }),
+      field("ai.disable_thinking", "Denkmodus aus (schneller)", "check", { help: "Für Reasoning-Modelle wie qwen3 – deutlich kürzere Antwortzeit." }),
+      field("ai.stt_model", "Spracherkennung (Whisper)", "select", { options: data.stt_models.map((m) => [m, m]), help: "small = CPU-tauglich · large-v3-turbo = beste Qualität (GPU empfohlen)." }),
+      field("ai.stt_device", "Rechengerät Whisper", "select", { options: [["auto", "automatisch"], ["cpu", "CPU"], ["cuda", "NVIDIA-GPU (CUDA)"]] }),
+      `<div class="kv"><span>Ollama</span><span>${escapeHtml(data.env.ollama_host)} · ${escapeHtml(data.env.ollama_state)}</span></div>`,
     ].join(""))}
     ${panel("STIMME", [
-      field("voice.name", "Stimme", "select", { options: voices, help: "★ = tief, ruhig, männlich – empfohlen für JARVIS." }),
+      field("voice.name", "Stimme (Hauptsprache)", "select", { options: voices("de"), help: "Piper-Stimmen, ★ = empfohlen. Fehlende laden: python scripts/download_models.py" }),
+      field("voice.name_en", "Stimme (Englisch)", "select", { options: voices("en") }),
       field("voice.language", "Primäre Sprache", "select", { options: LANGS }),
       field("voice.lock_language", "Sprache fixieren", "check", { help: "Aus: JARVIS antwortet automatisch in der Sprache, in der du sprichst." }),
       field("voice.speed", "Tempo", "select", { options: [["slow", "langsam"], ["calm", "ruhig"], ["normal", "normal"], ["fast", "zügig"]] }),
@@ -121,7 +130,7 @@ async function render() {
     ].join(""))}
     ${panel("MEMORY", [
       field("memory.enabled", "Langzeit-Memory aktiv", "check"),
-      field("memory.inject_into_context", "Erinnerungen an Gemini geben", "check"),
+      field("memory.inject_into_context", "Erinnerungen an das Sprachmodell geben", "check"),
       field("memory.allow_model_save", "JARVIS darf speichern", "check", { help: "Nur auf ausdrücklichen Wunsch („Merk dir …“)." }),
       field("memory.confirm_saves", "Speichern bestätigen", "check"),
       field("memory.short_term_turns", "Kurzzeit-Kontext (Runden)", "number", { min: 0, max: 200 }),
@@ -152,6 +161,7 @@ function collect() {
   form.querySelectorAll("[data-path]").forEach((el) => {
     let value = el.type === "checkbox" ? el.checked : el.value;
     if (el.dataset.type === "int") value = parseInt(value, 10);
+    if (el.dataset.type === "float") value = parseFloat(value);
     if (el.dataset.path === "conversation.microphone_device_id" && !value) value = null;
     set(draft, el.dataset.path, value);
   });

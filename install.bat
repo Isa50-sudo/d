@@ -58,11 +58,15 @@ if not exist ".env" (
 if not exist "data" mkdir data
 if not exist "logs" mkdir logs
 
+echo [....] Lade lokale Sprachmodelle (Stimme + Spracherkennung, einmalig)
+".venv\Scripts\python.exe" scripts\download_models.py
+
 ".venv\Scripts\python.exe" scripts\check_setup.py
 
 echo.
 echo  Naechster Schritt:
-echo    1. GEMINI_API_KEY in die Datei .env eintragen (https://aistudio.google.com/apikey)
-echo    2. start.bat ausfuehren
+echo    1. Ollama installieren und starten: https://ollama.com/download
+echo    2. Modell laden:  ollama pull qwen3:8b
+echo    3. start.bat ausfuehren
 echo.
 pause

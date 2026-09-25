@@ -23,18 +23,25 @@ PolicyName = Literal["allow", "confirm", "deny"]
 
 
 class AISettings(BaseModel):
-    live_model: str = "gemini-3.8-live"
-    google_search: bool = True
-    # Wie lange eine inaktive Live-Session offen bleibt (Kosten sparen)
-    session_idle_timeout_s: int = Field(default=300, ge=30, le=3600)
+    # Ollama-Modell (muss Tool-Calling unterstützen, z. B. qwen3, llama3.1, mistral-nemo)
+    model: str = "qwen3:8b"
+    temperature: float = Field(default=0.6, ge=0.0, le=2.0)
+    context_tokens: int = Field(default=8192, ge=2048, le=131072)
+    # Reasoning-Modelle (qwen3, deepseek-r1): "Denken" abschalten = schnellere Antworten
+    disable_thinking: bool = True
+    # Spracherkennung (faster-whisper): tiny, base, small, medium, large-v3, large-v3-turbo
+    stt_model: str = "small"
+    stt_device: Literal["auto", "cpu", "cuda"] = "auto"
 
 
 class VoiceSettings(BaseModel):
-    name: str = "Charon"
+    # Piper-Stimmen (Dateien in data/voices/, laden mit scripts/download_models.py)
+    name: str = "de_DE-thorsten-high"
+    name_en: str = "en_GB-alan-medium"
     language: str = "de-DE"
     speed: Literal["slow", "calm", "normal", "fast"] = "calm"
     style: str = "tief, ruhig, warm, souverän und professionell"
-    # True: Modell wird fest auf VOICE_LANGUAGE gesetzt (kein automatischer Sprachwechsel)
+    # True: JARVIS antwortet immer in VOICE_LANGUAGE (kein automatischer Sprachwechsel)
     lock_language: bool = False
 
 
@@ -124,8 +131,11 @@ class UserSettings(BaseModel):
     @classmethod
     def from_env(cls, env: EnvSettings) -> "UserSettings":
         settings = cls()
-        settings.ai.live_model = env.gemini_live_model
+        settings.ai.model = env.ollama_model
+        settings.ai.stt_model = env.stt_model
+        settings.ai.stt_device = env.stt_device
         settings.voice.name = env.voice_name
+        settings.voice.name_en = env.voice_name_en
         settings.voice.language = env.voice_language
         settings.voice.speed = env.voice_speed
         settings.voice.style = env.voice_style
@@ -166,6 +176,12 @@ class SettingsStore:
             return defaults
         try:
             raw = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            # Migration von der Gemini-Version: alte Stimm-/Modellwerte verwerfen
+            voice = raw.get("voice", {})
+            if isinstance(voice, dict) and "-" not in str(voice.get("name", "-")):
+                voice.pop("name", None)
+            if isinstance(raw.get("ai"), dict) and "live_model" in raw["ai"]:
+                raw["ai"] = {}
             merged = _deep_merge(defaults.model_dump(mode="json"), raw)
             return UserSettings.model_validate(merged)
         except (OSError, json.JSONDecodeError, ValidationError) as exc:

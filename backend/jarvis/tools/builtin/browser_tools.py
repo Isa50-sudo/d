@@ -27,6 +27,7 @@ KNOWN_SITES = {
     "reddit": "https://www.reddit.com",
     "chatgpt": "https://chatgpt.com",
     "gemini": "https://gemini.google.com",
+    "ollama": "https://ollama.com",
     "outlook": "https://outlook.live.com",
     "spotify": "https://open.spotify.com",
     "tagesschau": "https://www.tagesschau.de",

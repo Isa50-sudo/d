@@ -6,7 +6,7 @@ import socket
 import time
 from typing import TYPE_CHECKING
 
-from jarvis.ai.gemini import GeminiProvider
+from jarvis.ai.ollama import OllamaProvider
 from jarvis.config.env import EnvSettings
 from jarvis.config.user_settings import SettingsStore, UserSettings
 from jarvis.core.eventlog import EventLog
@@ -21,6 +21,8 @@ from jarvis.services.notifications import NotificationService
 from jarvis.system.monitor import SystemMonitor
 from jarvis.tools.manager import ToolManager
 from jarvis.tools.registry import ToolRegistry
+from jarvis.voice.stt import SpeechToText
+from jarvis.voice.tts import TextToSpeech
 from jarvis.web.http import WebClient
 
 if TYPE_CHECKING:
@@ -34,7 +36,9 @@ class Services:
         self.hub = Hub()
         self.events = EventLog(self.hub)
         self.settings = SettingsStore(env)
-        self.gemini = GeminiProvider(env)
+        self.ai = OllamaProvider(env)
+        self.stt = SpeechToText()
+        self.tts = TextToSpeech()
         self.monitor = SystemMonitor()
         self.memory = MemoryStore(DATABASE_FILE)
         self.conversation = ConversationBuffer(self.settings.current.memory.short_term_turns)
@@ -58,6 +62,7 @@ class Services:
             await session.close()
         await self.notifications.stop()
         await self.web.close()
+        await self.ai.close()
         self.memory.close()
 
     async def check_internet(self) -> bool:
@@ -66,7 +71,7 @@ class Services:
             return value
 
         def _probe() -> bool:
-            for host in (("dns.google", 443), ("generativelanguage.googleapis.com", 443)):
+            for host in (("dns.google", 443), ("duckduckgo.com", 443)):
                 try:
                     socket.getaddrinfo(*host)
                     return True

@@ -12,7 +12,8 @@ import datetime as dt
 import email.utils
 import re
 from typing import Any
-from urllib.parse import quote
+from html.parser import HTMLParser
+from urllib.parse import parse_qs, quote, urlsplit
 
 from defusedxml import ElementTree as SafeET
 
@@ -213,3 +214,53 @@ async def fetch_page_text(web: WebClient, url: str, max_chars: int = 8000) -> di
         "source": response.url.host,
         "retrieved_at": now_iso(),
     }
+
+
+class _DuckDuckGoParser(HTMLParser):
+    """Liest Ergebnisse aus html.duckduckgo.com (Titel, Link, Ausschnitt)."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[dict[str, str]] = []
+        self._field: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        cls = dict(attrs).get("class") or ""
+        if tag == "a" and "result__a" in cls:
+            href = dict(attrs).get("href") or ""
+            # Links sind als Weiterleitung kodiert: //duckduckgo.com/l/?uddg=<echte URL>
+            target = parse_qs(urlsplit(href).query).get("uddg", [href])[0]
+            self.results.append({"title": "", "url": target, "snippet": ""})
+            self._field = "title"
+        elif "result__snippet" in cls and self.results:
+            self._field = "snippet"
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("a", "td", "div"):
+            self._field = None
+
+    def handle_data(self, data: str) -> None:
+        if self._field and self.results:
+            self.results[-1][self._field] += data
+
+
+def parse_duckduckgo(html: str, limit: int) -> list[dict[str, str]]:
+    parser = _DuckDuckGoParser()
+    parser.feed(html)
+    results = []
+    for r in parser.results:
+        url = r["url"]
+        if not url.startswith(("http://", "https://")) or "duckduckgo.com/y.js" in url:
+            continue  # Werbung / interne Links
+        results.append({"title": " ".join(r["title"].split()), "url": url, "snippet": " ".join(r["snippet"].split())})
+        if len(results) >= limit:
+            break
+    return results
+
+
+async def web_search(web: WebClient, query: str, limit: int = 6, region: str = "de-de") -> dict[str, Any]:
+    response = await web.get("https://html.duckduckgo.com/html/", params={"q": query, "kl": region})
+    if response.status_code >= 400:
+        raise ToolError("Die Websuche ist gerade nicht erreichbar.")
+    results = parse_duckduckgo(response.text, limit)
+    return {"query": query, "results": results, "source": "DuckDuckGo", "retrieved_at": now_iso()}

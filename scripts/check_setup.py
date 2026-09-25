@@ -1,19 +1,21 @@
 """Prüft die JARVIS-Installation und erklärt fehlende Schritte verständlich.
 
 Aufruf:  python scripts/check_setup.py [--quick]
-Gibt Exit-Code 0 zurück, wenn JARVIS starten kann (fehlender API-Key ist nur eine Warnung).
+Gibt Exit-Code 0 zurück, wenn JARVIS starten kann (fehlendes Ollama/Modell ist nur eine Warnung).
 """
 from __future__ import annotations
 
 import importlib
+import json
 import shutil
 import socket
 import sys
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OK, WARN, FAIL = "  [ OK ]", "  [WARN]", "  [FAIL]"
-REQUIRED = ["fastapi", "uvicorn", "google.genai", "pydantic", "pydantic_settings", "psutil", "httpx", "defusedxml", "send2trash", "keyring"]
+REQUIRED = ["fastapi", "uvicorn", "pydantic", "pydantic_settings", "psutil", "httpx", "defusedxml", "send2trash", "keyring", "numpy", "faster_whisper", "piper"]
 
 
 def read_env() -> dict[str, str]:
@@ -64,14 +66,29 @@ def main() -> int:
             print(f"{FAIL} .env.example fehlt.")
             errors += 1
     env = read_env()
-    key = env.get("GEMINI_API_KEY", "")
-    if not key:
-        print(f"{WARN} GEMINI_API_KEY ist nicht gesetzt.")
-        print("         -> Key erstellen: https://aistudio.google.com/apikey")
-        print(f"         -> In {env_file} eintragen:  GEMINI_API_KEY=dein-schlüssel")
-        print("         JARVIS startet trotzdem, Sprache/KI sind aber erst danach verfügbar.")
+    ollama = env.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    model = env.get("OLLAMA_MODEL", "qwen3:8b")
+    try:
+        with urllib.request.urlopen(f"{ollama}/api/tags", timeout=3) as response:  # noqa: S310 - lokale Adresse
+            names = [m.get("name") for m in json.load(response).get("models", [])]
+        print(f"{OK} Ollama läuft ({ollama})")
+        if model in names or f"{model}:latest" in names:
+            print(f"{OK} Ollama-Modell {model} installiert")
+        else:
+            print(f"{WARN} Ollama-Modell {model} fehlt  ->  ollama pull {model}")
+    except Exception:  # noqa: BLE001
+        print(f"{WARN} Ollama ist nicht erreichbar ({ollama}).")
+        print("         -> Installieren/starten: https://ollama.com/download")
+        print(f"         -> Modell laden:  ollama pull {model}")
+        print("         JARVIS startet trotzdem, antwortet aber erst, wenn Ollama läuft.")
+
+    voice = env.get("VOICE_NAME", "de_DE-thorsten-high")
+    if "-" not in voice:  # alter Gemini-Stimmname (z. B. Charon) -> Piper-Standard
+        voice = "de_DE-thorsten-high"
+    if (ROOT / "data" / "voices" / f"{voice}.onnx").exists():
+        print(f"{OK} Stimme {voice} vorhanden")
     else:
-        print(f"{OK} GEMINI_API_KEY ist gesetzt (Wert wird nicht angezeigt)")
+        print(f"{WARN} Stimme {voice} fehlt  ->  python scripts/download_models.py")
 
     host = env.get("JARVIS_HOST", "127.0.0.1")
     if host not in ("127.0.0.1", "localhost", "::1"):
@@ -87,10 +104,10 @@ def main() -> int:
 
     if not quick:
         try:
-            socket.getaddrinfo("generativelanguage.googleapis.com", 443)
-            print(f"{OK} Internet / Gemini-Endpunkt erreichbar (DNS)")
+            socket.getaddrinfo("duckduckgo.com", 443)
+            print(f"{OK} Internet erreichbar (für Websuche, Nachrichten, Wetter)")
         except OSError:
-            print(f"{WARN} Gemini-Endpunkt nicht auflösbar – keine Internetverbindung?")
+            print(f"{WARN} Kein Internet – JARVIS funktioniert lokal, Webfunktionen fehlen.")
 
     print("-" * 40)
     if errors:

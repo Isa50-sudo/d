@@ -108,9 +108,9 @@ function render(s) {
   }
 
   $("svc-backend").textContent = `online · ${dur(s.backend_uptime_s)}`;
-  const g = store.gemini;
-  $("svc-gemini").textContent = { ok: "verbunden", connected: "verbunden", error: "Fehler", unconfigured: "kein API-Key", unknown: "bereit", standby: "Standby", closed: "getrennt", connecting: "verbindet …" }[g.state] || g.state;
-  $("svc-model").textContent = g.model || store.settings?.ai?.live_model || "–";
+  const g = store.ai;
+  $("svc-ai").textContent = { ok: "erreichbar", connected: "Sitzung aktiv", error: "nicht erreichbar", missing_model: "Modell fehlt", unknown: "bereit", closed: "bereit", connecting: "startet …" }[g.state] || g.state;
+  $("svc-model").textContent = g.model || store.settings?.ai?.model || "–";
   $("svc-time").textContent = new Date(s.ts * 1000).toLocaleString("de-DE");
   $("svc-uptime").textContent = dur(s.uptime_s);
 }

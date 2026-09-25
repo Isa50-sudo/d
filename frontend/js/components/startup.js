@@ -3,7 +3,7 @@ import { api } from "../core/api.js";
 import { escapeHtml } from "../core/store.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const ORDER = ["system", "microphone", "gemini", "voice", "tools", "network", "memory", "email"];
+const ORDER = ["system", "microphone", "ollama", "stt", "voice", "tools", "network", "memory", "email"];
 
 function line(list, label) {
   const li = document.createElement("li");
@@ -75,15 +75,20 @@ export async function runStartup() {
     settle(li, check.status, check.detail);
   }
 
-  if (!backend.gemini_configured) {
+  const model = escapeHtml(byKey.ollama?.detail?.split(" · ")[0] || "qwen3:8b");
+  const hints = [];
+  if (!backend.ai_ready) {
+    hints.push(`<b>Ollama ist nicht bereit.</b> ${escapeHtml(backend.ai_message || "")}<br />
+      1. Ollama installieren und starten: <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a><br />
+      2. Modell laden (Terminal): <code>ollama pull ${backend.ai_message?.includes("pull") ? escapeHtml(backend.ai_message.split("pull ").pop()) : model}</code><br />
+      3. Danach hier einfach auf „JARVIS AKTIVIEREN“ klicken – ein Neustart ist nicht nötig.`);
+  }
+  if (!backend.voice_ready) {
+    hints.push(`<b>Stimme fehlt.</b> Einmalig herunterladen: <code>python scripts/download_models.py</code> (danach JARVIS neu starten). Bis dahin antwortet JARVIS als Text.`);
+  }
+  if (hints.length) {
     setup.classList.remove("hidden");
-    setup.innerHTML = `
-      <b>Gemini API Key fehlt.</b><br />
-      1. Erstelle einen Key unter <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a><br />
-      2. Öffne die Datei <code>.env</code> im JARVIS-Ordner (Vorlage: <code>.env.example</code>)<br />
-      3. Trage ein: <code>GEMINI_API_KEY=dein-schlüssel</code><br />
-      4. Starte JARVIS neu (<code>start.bat</code> bzw. <code>./start.sh</code>).<br />
-      <span class="dim">Der Schlüssel bleibt ausschließlich im lokalen Backend – er wird nie an den Browser gesendet.</span>`;
+    setup.innerHTML = hints.join("<br /><br />") + `<br /><span class="dim">JARVIS läuft vollständig lokal – es werden keine API-Keys benötigt.</span>`;
   }
 
   const failed = backend.checks.filter((c) => c.status === "FAIL").map((c) => c.label);

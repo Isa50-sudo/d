@@ -4,9 +4,9 @@ import { bus } from "./bus.js";
 export const store = {
   clientId: null,
   settings: null,
-  audio: { input_sample_rate: 16000, output_sample_rate: 24000 },
+  audio: { input_sample_rate: 16000, output_sample_rate: 22050 },
   backend: "connecting", // connecting | online | offline
-  gemini: { configured: false, state: "unknown", message: null, model: "" },
+  ai: { configured: true, state: "unknown", message: null, model: "" },
   mic: "off", // off | ready | live | muted | error
   lastStats: null,
 };

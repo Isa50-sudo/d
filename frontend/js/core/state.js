@@ -1,5 +1,5 @@
 // Zustandsautomat für die JARVIS-Anzeige.
-// Leitet aus Einzelsignalen (Backend, Gemini, Mikrofon, Wiedergabe, Tools, Bestätigung)
+// Leitet aus Einzelsignalen (Backend, Ollama, Mikrofon, Wiedergabe, Tools, Bestätigung)
 // einen eindeutigen Anzeigezustand ab.
 import { bus } from "./bus.js";
 
@@ -18,8 +18,8 @@ export const STATES = {
 
 const flags = {
   backendOnline: false,
-  geminiOk: true,
-  listening: false, // Mikrofon streamt zu Gemini
+  aiOk: true,
+  listening: false, // Mikrofon streamt zum Backend
   userSpeaking: false,
   thinking: false,
   speaking: false,
@@ -68,7 +68,7 @@ function recompute() {
   else if (flags.toolsRunning > 0) next = STATES.EXECUTING;
   else if (flags.speaking) next = STATES.SPEAKING;
   else if (flags.completedUntil > now) next = STATES.COMPLETED;
-  else if (!flags.geminiOk) next = STATES.OFFLINE;
+  else if (!flags.aiOk) next = STATES.OFFLINE;
   else if (flags.thinking) next = STATES.THINKING;
   else if (flags.listening) next = STATES.LISTENING;
   else if (flags.standby) next = STATES.STANDBY;

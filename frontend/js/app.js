@@ -27,9 +27,9 @@ function indicator(id, cls, title) {
 
 function renderIndicators() {
   indicator("ind-backend", store.backend === "online" ? "ok" : "err", `Backend: ${store.backend}`);
-  const g = store.gemini;
-  const gCls = !g.configured ? "err" : g.state === "error" ? "err" : g.state === "connected" ? "live" : g.state === "connecting" ? "warn" : "ok";
-  indicator("ind-gemini", gCls, g.message || `Gemini: ${g.state}`);
+  const g = store.ai;
+  const gCls = g.state === "error" || g.state === "missing_model" ? "err" : g.state === "connected" ? "live" : g.state === "connecting" ? "warn" : "ok";
+  indicator("ind-ai", gCls, g.message || `Ollama: ${g.state}`);
   const mCls = { live: "live", ready: "ok", muted: "warn", error: "err" }[store.mic] || "";
   indicator("ind-mic", mCls, `Mikrofon: ${store.mic}`);
 }
@@ -48,19 +48,19 @@ function wireEvents() {
       clientId: msg.client_id,
       settings: msg.settings,
       audio: msg.audio,
-      gemini: { ...store.gemini, configured: msg.gemini.configured, state: msg.gemini.configured ? msg.gemini.state : "unconfigured", message: msg.gemini.message },
+      ai: { ...store.ai, configured: true, state: msg.ai.state, message: msg.ai.message, model: msg.ai.model },
     });
     applyUiSettings(msg.settings);
-    setFlags({ geminiOk: msg.gemini.configured });
+    setFlags({ aiOk: !["error", "missing_model"].includes(msg.ai.state) });
     // Nach Wiederverbindung die Sprachsitzung wiederherstellen
     if (conversation.engaged) conversation.setMode(conversation.mode, { persist: false });
   });
 
-  bus.on("ws:gemini.status", ({ state, message, model }) => {
-    setStore({ gemini: { ...store.gemini, state, message, model } });
-    setFlags({ geminiOk: state !== "error" && store.gemini.configured });
+  bus.on("ws:ai.status", ({ state, message, model }) => {
+    setStore({ ai: { ...store.ai, state, message, model } });
+    setFlags({ aiOk: state !== "error" });
     if (state === "error") flash("error");
-    conversation.onGeminiStatus(state);
+    conversation.onAiStatus(state);
   });
 
   bus.on("ws:model.speaking", () => setFlags({ thinking: false }));
@@ -69,7 +69,10 @@ function wireEvents() {
     conversation.onUserActivity(activity === "start");
   });
   bus.on("ws:turn.complete", () => conversation.onTurnComplete());
-  bus.on("ws:interrupted", () => conversation.onInterrupted());
+  bus.on("ws:interrupted", () => {
+    conversation.onInterrupted();
+    setFlags({ thinking: false });
+  });
 
   bus.on("ws:tool.start", () => setFlags({ toolsRunning: getFlags().toolsRunning + 1, thinking: false }));
   bus.on("ws:tool.end", ({ ok }) => {

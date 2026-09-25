@@ -56,7 +56,7 @@ class ToolManager:
         *,
         client: "ClientConnection | None" = None,
         call_id: str | None = None,
-        source: str = "gemini",
+        source: str = "assistant",
     ) -> dict[str, Any]:
         """Führt einen Tool-Call aus und liefert IMMER ein strukturiertes Ergebnis."""
         events = self.services.events
@@ -67,9 +67,10 @@ class ToolManager:
             events.add("tool", f"Unbekanntes/inaktives Tool angefordert: {name}", "warning")
             return {"status": "error", "message": f"Das Werkzeug '{name}' ist nicht verfügbar."}
 
-        # 1) Parameter validieren
+        # 1) Parameter validieren (lokale Modelle senden für leere Felder oft "" – wie "nicht angegeben" behandeln)
+        cleaned = {k: v for k, v in (raw_args or {}).items() if v != "" and v is not None}
         try:
-            args = tool.args_model.model_validate(raw_args or {})
+            args = tool.args_model.model_validate(cleaned)
         except ValidationError as exc:
             problems = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())
             events.add("tool", f"Ungültige Parameter für {name}", "warning", {"errors": problems})

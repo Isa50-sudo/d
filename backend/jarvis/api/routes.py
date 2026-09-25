@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import platform
 import time
 from typing import Any
@@ -9,16 +10,21 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
+from jarvis.ai.ollama import OllamaError
 from jarvis.services.container import Services
 from jarvis.voice.profile import VOICES
+from jarvis.voice.tts import installed_voices
 
 router = APIRouter(prefix="/api")
 
-KNOWN_LIVE_MODELS = [
-    {"id": "gemini-3.8-live", "label": "Gemini 3.8 Live – Standard, niedrige Latenz"},
-    {"id": "gemini-3.8-live-extended-thinking", "label": "Gemini 3.8 Live Extended Thinking – mehr Reasoning"},
-    {"id": "gemini-3.1-flash-live-preview", "label": "Gemini 3.1 Flash Live (Legacy)"},
+RECOMMENDED_MODELS = [
+    {"id": "qwen3:8b", "label": "Qwen3 8B – empfohlen (Deutsch + Tools, ~5 GB)"},
+    {"id": "qwen3:14b", "label": "Qwen3 14B – klüger, braucht mehr RAM/VRAM"},
+    {"id": "qwen3:4b", "label": "Qwen3 4B – für schwächere Rechner"},
+    {"id": "llama3.1:8b", "label": "Llama 3.1 8B – Tools, eher Englisch"},
+    {"id": "mistral-nemo", "label": "Mistral NeMo 12B – gutes Deutsch, Tools"},
 ]
+STT_MODELS = ["tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"]
 
 
 def svc(request: Request) -> Services:
@@ -31,7 +37,7 @@ async def health(request: Request) -> dict[str, Any]:
     return {
         "status": "ok",
         "uptime_s": round(time.time() - s.started_at),
-        "gemini": {"configured": s.gemini.configured, "state": s.gemini.state, "message": s.gemini.last_error},
+        "ai": {"state": s.ai.state, "message": s.ai.last_error, "model": s.settings.current.ai.model},
         "clients": s.hub.client_count,
     }
 
@@ -53,18 +59,19 @@ async def startup_check(request: Request) -> dict[str, Any]:
         add("system", "SYSTEM", "FAIL", f"Systeminformationen nicht lesbar: {type(exc).__name__}")
 
     internet = await s.check_internet()
-    add("network", "NETWORK", "OK" if internet else "FAIL", "Internet erreichbar" if internet else "Keine Internetverbindung")
+    add("network", "NETWORK", "OK" if internet else "WARN", "Internet erreichbar" if internet else "Kein Internet – Webfunktionen nicht verfügbar")
 
-    if not s.gemini.configured:
-        add("gemini", "GEMINI", "FAIL", "GEMINI_API_KEY fehlt in .env")
-    elif not internet:
-        add("gemini", "GEMINI", "FAIL", "Nicht erreichbar (kein Internet)")
-    else:
-        ok, msg = await s.gemini.check(settings.ai.live_model)
-        add("gemini", "GEMINI", "OK" if ok else "FAIL", f"{settings.ai.live_model} · {msg}" if ok else msg)
+    ok, msg = await s.ai.check(settings.ai.model)
+    add("ollama", "OLLAMA", "OK" if ok else "FAIL", f"{settings.ai.model} · {msg}" if ok else msg)
 
-    voice_ok = any(v["name"] == settings.voice.name for v in VOICES)
-    add("voice", "VOICE", "OK" if voice_ok else "WARN", f"{settings.voice.name} · {settings.voice.language} · {settings.voice.speed}")
+    stt_ok = importlib.util.find_spec("faster_whisper") is not None
+    add("stt", "STT", "OK" if stt_ok else "FAIL",
+        f"faster-whisper · Modell {settings.ai.stt_model}" + ("" if s.stt.loaded else " (wird beim Aktivieren geladen)") if stt_ok else "Paket faster-whisper fehlt – install ausführen")
+
+    voices = installed_voices()
+    voice_ok = settings.voice.name in voices
+    add("voice", "VOICE", "OK" if voice_ok else "FAIL",
+        f"Piper · {settings.voice.name} · {settings.voice.speed}" if voice_ok else f"Stimme {settings.voice.name} fehlt – python scripts/download_models.py ausführen")
 
     active = s.registry.active(s)
     add("tools", "TOOLS", "OK", f"{len(active)} Tools aktiv · Zugriffsstufe {settings.permissions.access_level}")
@@ -77,19 +84,33 @@ async def startup_check(request: Request) -> dict[str, Any]:
     add("email", "EMAIL", "OK" if email.configured and email.password_stored else "SKIP", email.message)
 
     s.events.add("system", "Startsequenz-Prüfung durchgeführt", "info", {c["key"]: c["status"] for c in checks})
-    return {"checks": checks, "gemini_configured": s.gemini.configured}
+    return {"checks": checks, "ai_ready": ok, "ai_message": msg, "voice_ready": voice_ok, "ollama_host": s.ai.base_url}
 
 
 # --- Settings -----------------------------------------------------------
 @router.get("/settings")
 async def get_settings(request: Request) -> dict[str, Any]:
     s = svc(request)
+    try:
+        installed = [m["name"] for m in await s.ai.list_models()]
+    except OllamaError:
+        installed = []
+    voices_installed = installed_voices()
+    catalog = {v["name"] for v in VOICES}
+    voices = [{**v, "installed": v["name"] in voices_installed} for v in VOICES] + [
+        {"name": n, "character": "installiert", "language": n[:2], "recommended": False, "installed": True}
+        for n in voices_installed if n not in catalog
+    ]
     return {
         "settings": s.settings.current.model_dump(mode="json"),
-        "voices": VOICES,
-        "models": KNOWN_LIVE_MODELS,
+        "voices": voices,
+        "models": [{"id": n, "label": f"{n} (installiert)"} for n in installed]
+        + [m for m in RECOMMENDED_MODELS if m["id"] not in installed],
+        "installed_models": installed,
+        "stt_models": STT_MODELS,
         "env": {
-            "gemini_configured": s.gemini.configured,
+            "ollama_host": s.ai.base_url,
+            "ollama_state": s.ai.state,
             "allowed_paths": [str(p) for p in s.env.allowed_path_list()],
             "email_configured": s.env.email_configured,
             "platform": platform.system(),

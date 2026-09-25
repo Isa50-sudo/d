@@ -29,12 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     services: Services = app.state.services
     await services.start()
     services.events.add("system", "JARVIS gestartet", "success")
-    if not services.gemini.configured:
-        services.events.add(
-            "gemini",
-            "Kein GEMINI_API_KEY gefunden. Bitte in der Datei .env eintragen (siehe .env.example).",
-            "warning",
-        )
+    ok, message = await services.ai.check(services.settings.current.ai.model)
+    services.events.add("ai", f"Ollama: {message}", "success" if ok else "warning")
     try:
         yield
     finally:

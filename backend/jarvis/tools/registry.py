@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import TYPE_CHECKING, Iterable
-
-from google.genai import types
+from typing import TYPE_CHECKING, Any, Iterable
 
 from jarvis.tools.base import Tool, declared_tools
 
@@ -67,14 +65,42 @@ class ToolRegistry:
         return result
 
     @staticmethod
-    def to_function_declarations(tools: Iterable[Tool], behavior: types.Behavior | None) -> list[types.FunctionDeclaration]:
-        declarations = []
+    def to_ollama_tools(tools: Iterable[Tool]) -> list[dict[str, Any]]:
+        """Tool-Definitionen im Format der Ollama-Chat-API (OpenAI-kompatibel)."""
+        result = []
         for tool in tools:
-            kwargs = {"name": tool.name, "description": tool.description}
-            schema = tool.json_schema()
-            if schema is not None:
-                kwargs["parameters_json_schema"] = schema
-            if behavior is not None:
-                kwargs["behavior"] = behavior
-            declarations.append(types.FunctionDeclaration(**kwargs))
-        return declarations
+            schema = tool.json_schema() or {"type": "object", "properties": {}}
+            result.append(
+                {
+                    "type": "function",
+                    "function": {"name": tool.name, "description": tool.description, "parameters": simplify_schema(schema)},
+                }
+            )
+        return result
+
+
+def simplify_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Vereinfacht Pydantic-JSON-Schemas für lokale Modelle.
+
+    Ollama/kleinere Modelle verstehen ``anyOf: [X, null]`` (Optional) schlecht –
+    daraus wird einfach ``X``. Nicht benötigte Felder (default=null) entfallen.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    out: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key == "anyOf" and isinstance(value, list):
+            non_null = [v for v in value if not (isinstance(v, dict) and v.get("type") == "null")]
+            if len(non_null) == 1:
+                out.update(simplify_schema(non_null[0]))
+                continue
+            out[key] = [simplify_schema(v) for v in value]
+        elif key == "properties" and isinstance(value, dict):
+            out[key] = {name: simplify_schema(prop) for name, prop in value.items()}
+        elif key == "items":
+            out[key] = simplify_schema(value)
+        elif key == "default" and value is None:
+            continue
+        else:
+            out[key] = value
+    return out

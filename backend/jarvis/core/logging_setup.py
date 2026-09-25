@@ -54,7 +54,7 @@ def setup_logging(level: str = "INFO") -> None:
     set_level(level)
 
     # Laute Bibliotheken dämpfen – insbesondere keine Request-Dumps mit Headern
-    for noisy in ("httpx", "httpcore", "websockets", "google_genai", "urllib3"):
+    for noisy in ("httpx", "httpcore", "websockets", "faster_whisper", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

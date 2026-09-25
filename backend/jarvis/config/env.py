@@ -1,15 +1,16 @@
-"""Umgebungs-/Secret-Konfiguration (.env).
+"""Umgebungskonfiguration (.env).
 
-Secrets (GEMINI_API_KEY) werden ausschließlich hier gelesen, als SecretStr
-gehalten und niemals an das Frontend, in Logs oder in Dateien geschrieben.
+JARVIS läuft vollständig lokal: Sprachmodell über Ollama, Spracherkennung mit
+faster-whisper, Sprachausgabe mit Piper. Es werden keine API-Keys benötigt.
 """
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from jarvis.core.paths import ENV_FILE
@@ -25,10 +26,17 @@ class EnvSettings(BaseSettings):
         case_sensitive=False,
     )
 
-    gemini_api_key: SecretStr | None = None
-    gemini_live_model: str = "gemini-3.8-live"
+    # --- Ollama (Sprachmodell) ---
+    ollama_host: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:8b"
 
-    voice_name: str = "Charon"
+    # --- Spracherkennung (faster-whisper) ---
+    stt_model: str = "small"
+    stt_device: Literal["auto", "cpu", "cuda"] = "auto"
+
+    # --- Sprachausgabe (Piper) ---
+    voice_name: str = "de_DE-thorsten-high"
+    voice_name_en: str = "en_GB-alan-medium"
     voice_language: str = "de-DE"
     voice_speed: Literal["slow", "calm", "normal", "fast"] = "calm"
     voice_style: str = (
@@ -48,16 +56,13 @@ class EnvSettings(BaseSettings):
     email_smtp_host: str = ""
     email_smtp_port: int = 587
 
-    @field_validator("gemini_api_key", mode="before")
+    @field_validator("voice_name", "voice_name_en", mode="before")
     @classmethod
-    def _empty_key_is_none(cls, value: object) -> object:
-        if isinstance(value, str) and not value.strip():
-            return None
+    def _piper_voice_name(cls, value: object, info) -> object:  # type: ignore[no-untyped-def]
+        # Migration: alte Gemini-Stimmnamen (z. B. "Charon") sind keine Piper-Stimmen
+        if isinstance(value, str) and not re.fullmatch(r"[a-z]{2,3}_[A-Z]{2}-[\w]+-(x_low|low|medium|high)", value.strip()):
+            return "de_DE-thorsten-high" if info.field_name == "voice_name" else "en_GB-alan-medium"
         return value
-
-    @property
-    def has_gemini_key(self) -> bool:
-        return self.gemini_api_key is not None and bool(self.gemini_api_key.get_secret_value())
 
     def allowed_path_list(self) -> list[Path]:
         """Liste der Wurzelordner, auf die Datei-Tools zugreifen dürfen."""

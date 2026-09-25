@@ -3,9 +3,9 @@
 // Modi:
 //   wake_word    – Standby, bis "Jarvis" erkannt wird. Dann fließt Audio (inkl. ~1,5 s
 //                  Pre-Roll, damit "Jarvis, wie ist das Wetter" vollständig ankommt) zu
-//                  Gemini. Nach der Antwort bleibt ein Follow-up-Fenster offen; danach
+//                  JARVIS. Nach der Antwort bleibt ein Follow-up-Fenster offen; danach
 //                  wieder Standby.
-//   continuous   – Mikrofon dauerhaft offen (Gemini ignoriert Nebengespräche).
+//   continuous   – Mikrofon dauerhaft offen (JARVIS reagiert nur, wenn er angesprochen wird).
 //   push_to_talk – Leertaste bzw. Kern gedrückt halten.
 import { bus } from "../core/bus.js";
 import { sendBinary, sendJson } from "../core/ws.js";
@@ -33,7 +33,7 @@ class ConversationController {
     this.lastVoiceAt = 0;
     this.sawUserSpeech = false;
 
-    this.player = new VoicePlayer(24000);
+    this.player = new VoicePlayer(22050);
     this.mic = new Microphone({ targetRate: 16000, onChunk: (pcm, rms) => this._onChunk(pcm, rms) });
     this.mic.onEnded = () => this._micFailed("Das Mikrofon ist momentan nicht verfügbar.");
   }
@@ -43,7 +43,7 @@ class ConversationController {
 
   /** Muss aus einer Benutzergeste heraus aufgerufen werden (Autoplay-Richtlinie). */
   async engage() {
-    this.player.sampleRate = store.audio.output_sample_rate || 24000;
+    this.player.sampleRate = store.audio.output_sample_rate || 22050;
     await this.player.resume();
     this.player.onPlayingChange = (playing) => {
       setFlags({ speaking: playing });
@@ -108,10 +108,10 @@ class ConversationController {
       }
       setFlags({ standby: true });
       // Session im Hintergrund vorwärmen, damit die erste Antwort schnell kommt
-      if (store.gemini.configured) sendJson({ type: "voice.start" });
+      sendJson({ type: "voice.start" });
     } else {
       setFlags({ standby: false });
-      if (store.gemini.configured) sendJson({ type: "voice.start" });
+      sendJson({ type: "voice.start" });
     }
     this._applyIdleHint();
   }
@@ -119,7 +119,7 @@ class ConversationController {
   _applyIdleHint() {
     const word = (store.settings?.conversation?.wake_word || "jarvis").replace(/^./, (c) => c.toUpperCase());
     if (!this.engaged) return setHint("");
-    if (!store.gemini.configured) return setHint("Gemini API Key fehlt – trage GEMINI_API_KEY in die .env ein.");
+    if (["error", "missing_model"].includes(store.ai.state)) return setHint(store.ai.message || "Ollama ist nicht bereit.");
     if (store.mic === "error") return setHint("Mikrofon nicht verfügbar – nutze den Textchat.");
     if (this.muted) return setHint("Mikrofon stummgeschaltet (M)");
     if (this.streaming && this.mode !== "push_to_talk") return setHint(this.mode === "continuous" ? "Mikrofon offen – sprich einfach." : "Ich höre zu …");
@@ -131,10 +131,6 @@ class ConversationController {
   /** Wake Word erkannt / Kern angetippt. */
   activate(source = "tap") {
     if (!this.engaged || this.muted || !this.mic.active) return;
-    if (!store.gemini.configured) {
-      bus.emit("voice:notice", { message: "Sprachsteuerung benötigt einen Gemini API Key (GEMINI_API_KEY in .env)." });
-      return;
-    }
     this.wake?.stop();
     setFlags({ standby: false });
     sendJson({ type: "voice.start" });
@@ -157,7 +153,7 @@ class ConversationController {
 
   toggleFromCore() {
     if (!this.engaged) return;
-    if (["error", "closed"].includes(store.gemini.state) && store.gemini.configured) {
+    if (["error", "closed", "missing_model"].includes(store.ai.state)) {
       sendJson({ type: "voice.start" }); // nach Fehler: Verbindung neu aufbauen
     }
     if (this.mode === "wake_word") {
@@ -203,10 +199,6 @@ class ConversationController {
   }
 
   sendText(text) {
-    if (!store.gemini.configured) {
-      bus.emit("voice:notice", { message: "Ohne Gemini API Key kann JARVIS nicht antworten (GEMINI_API_KEY in .env)." });
-      return false;
-    }
     if (getFlags().speaking) this.player.clear();
     const ok = sendJson({ type: "text", text });
     if (ok) setFlags({ thinking: true });
@@ -214,7 +206,7 @@ class ConversationController {
   }
 
   /** Backend meldet geschlossene/pausierte Session: bei aktivem Stream neu verbinden. */
-  onGeminiStatus(state) {
+  onAiStatus(state) {
     if (this.streaming && ["standby", "closed"].includes(state)) sendJson({ type: "voice.start" });
   }
 
@@ -239,10 +231,6 @@ class ConversationController {
   // --------------------------------------------------------------------
   _startStreaming() {
     if (this.streaming) return;
-    if (!store.gemini.configured) {
-      bus.emit("voice:notice", { message: "Sprachsteuerung benötigt einen Gemini API Key (GEMINI_API_KEY in .env)." });
-      return;
-    }
     this.streaming = true;
     this.sawUserSpeech = false;
     setStore({ mic: "live" });

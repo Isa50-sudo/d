@@ -2,7 +2,7 @@
 
 Client -> Server
   binär                     PCM16 mono 16 kHz Mikrofon-Audio
-  {"type":"voice.start"}    Sprachsitzung aktivieren (Gemini Live verbinden)
+  {"type":"voice.start"}    Sprachsitzung aktivieren (Ollama prüfen, Stimme laden)
   {"type":"voice.pause"}    Mikrofon-Stream pausiert (audio_stream_end)
   {"type":"voice.stop"}     Sprachsitzung beenden
   {"type":"text","text":…}  Textnachricht (Fallback)
@@ -12,7 +12,7 @@ Client -> Server
 
 Server -> Client
   binär                     PCM16 mono 24 kHz JARVIS-Stimme
-  hello, gemini.status, transcript, model.speaking, voice.activity, interrupted,
+  hello, ai.status, transcript, model.speaking, voice.activity, interrupted,
   turn.complete, interaction.status, tool.start/end/denied, confirm.request/closed,
   sources, search, system.stats, notification, log, ui.navigate, world.focus,
   world.clear, memory.changed, reminders.changed, email.new, error, pong
@@ -25,7 +25,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from jarvis.ai.live_session import GeminiUnavailable, LiveSession
+from jarvis.ai.live_session import AIUnavailable, LiveSession
 from jarvis.core.hub import ClientConnection
 from jarvis.services.container import Services
 from jarvis.voice.profile import INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE
@@ -51,18 +51,18 @@ async def _start_voice(session: LiveSession, client: ClientConnection) -> None:
     try:
         await session.ensure_started()
         await client.send_event("voice.ready", {})
-    except GeminiUnavailable as exc:
-        await client.send_event("error", {"message": exc.user_message, "source": "gemini"})
+    except AIUnavailable as exc:
+        await client.send_event("error", {"message": exc.user_message, "source": "ai"})
 
 
 async def _send_text(session: LiveSession, client: ClientConnection, content: str) -> None:
     try:
         await session.send_text(content)
-    except GeminiUnavailable as exc:
-        await client.send_event("error", {"message": exc.user_message, "source": "gemini"})
+    except AIUnavailable as exc:
+        await client.send_event("error", {"message": exc.user_message, "source": "ai"})
     except Exception:  # noqa: BLE001
         log.exception("Text konnte nicht gesendet werden")
-        await client.send_event("error", {"message": "Die Nachricht konnte nicht an Gemini gesendet werden.", "source": "gemini"})
+        await client.send_event("error", {"message": "Die Nachricht konnte nicht verarbeitet werden.", "source": "ai"})
 
 
 @router.websocket("/ws")
@@ -80,7 +80,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         {
             "client_id": client.id,
             "audio": {"input_sample_rate": INPUT_SAMPLE_RATE, "output_sample_rate": OUTPUT_SAMPLE_RATE},
-            "gemini": {"configured": services.gemini.configured, "state": services.gemini.state, "message": services.gemini.last_error},
+            "ai": {"configured": True, "state": services.ai.state, "message": services.ai.last_error, "model": services.settings.current.ai.model},
             "settings": services.settings.current.model_dump(mode="json"),
             "pending_confirmations": [p.public(services.settings.current.permissions.confirmation_timeout_s) for p in services.confirmations.pending],
         },
@@ -114,8 +114,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     streaming_logged = True
                 try:
                     session.start_nowait()
-                except GeminiUnavailable as exc:
-                    await client.send_event("error", {"message": exc.user_message, "source": "gemini"})
+                except AIUnavailable as exc:
+                    await client.send_event("error", {"message": exc.user_message, "source": "ai"})
                     continue
                 _spawn(_start_voice(session, client))
             elif kind == "voice.pause":
