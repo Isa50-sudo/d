@@ -161,7 +161,9 @@ class SpeechToText:
         with self._lock:
             self._load(model_name, device)
 
-    def _transcribe(self, pcm16: bytes, language: str | None, model_name: str, device: str) -> Transcript:
+    def _transcribe(
+        self, pcm16: bytes, language: str | None, model_name: str, device: str, allowed: tuple[str, ...] = ()
+    ) -> Transcript:
         audio = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
         with self._lock:
             self._load(model_name, device)
@@ -176,6 +178,11 @@ class SpeechToText:
                 self.device_in_use = "cpu"
                 self.notice = "Die Grafikkarte ist für die Spracherkennung nicht nutzbar – JARVIS nutzt jetzt die CPU."
                 parts, info = self._run(audio, language)
+            detected = getattr(info, "language", None)
+            if language is None and allowed and detected not in allowed:
+                # Kurze Sätze werden oft falsch zugeordnet (z. B. Deutsch -> Russisch/Türkisch)
+                log.info("Whisper erkannte '%s' – wiederhole in '%s'", detected, allowed[0])
+                parts, info = self._run(audio, allowed[0])
         text = " ".join(p.strip() for p in parts).strip()
         if _HALLUCINATIONS.match(text):
             text = ""
@@ -193,5 +200,7 @@ class SpeechToText:
         parts = [s.text for s in segments if s.no_speech_prob < 0.6 and s.avg_logprob > -1.2]
         return parts, info
 
-    async def transcribe(self, pcm16: bytes, *, language: str | None, model_name: str, device: str) -> Transcript:
-        return await asyncio.to_thread(self._transcribe, pcm16, language, model_name, device)
+    async def transcribe(
+        self, pcm16: bytes, *, language: str | None, model_name: str, device: str, allowed: tuple[str, ...] = ()
+    ) -> Transcript:
+        return await asyncio.to_thread(self._transcribe, pcm16, language, model_name, device, allowed)

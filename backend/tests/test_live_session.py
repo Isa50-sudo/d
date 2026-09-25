@@ -64,7 +64,7 @@ class FakeSTT:
     def is_ready(self, model_name, device):
         return True
 
-    async def transcribe(self, pcm, *, language, model_name, device):
+    async def transcribe(self, pcm, *, language, model_name, device, allowed=()):
         self.calls += 1
         return Transcript(self.text, self.language)
 

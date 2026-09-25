@@ -13,6 +13,7 @@ from typing import Any, AsyncIterator, Literal
 import httpx
 
 from jarvis.config.env import EnvSettings
+from jarvis.core.text import clean_payload, clean_text  # noqa: F401 (Re-Export)
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +130,7 @@ class OllamaProvider:
         if disable_thinking and "thinking" in caps:
             payload["think"] = False
 
+        payload = clean_payload(payload)
         try:
             async with self._client.stream("POST", "/api/chat", json=payload) as response:
                 if response.status_code == 404:

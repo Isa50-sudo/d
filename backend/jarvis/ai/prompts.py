@@ -6,6 +6,23 @@ import platform
 
 from jarvis.voice.profile import VoiceProfile
 
+WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+
+
+def _format_now(now: dt.datetime) -> str:
+    """Datum/Uhrzeit ohne Betriebssystem-Zeitzonennamen.
+
+    Windows liefert z. B. "Mitteleuropäische Sommerzeit" – Python dekodiert diesen
+    Namen dort teils fehlerhaft (Surrogate-Zeichen), was die Anfrage an Ollama
+    unbrauchbar macht. Daher nur Wochentag, Datum, Uhrzeit und UTC-Versatz.
+    """
+    offset = now.utcoffset() or dt.timedelta(0)
+    minutes = int(offset.total_seconds() // 60)
+    sign = "+" if minutes >= 0 else "-"
+    utc = f"UTC{sign}{abs(minutes) // 60:02d}:{abs(minutes) % 60:02d}"
+    return f"{WEEKDAYS[now.weekday()]}, {now:%d.%m.%Y, %H:%M} Uhr ({utc})"
+
+
 LANG_NAMES = {"de": "Deutsch", "en": "Englisch", "fr": "Französisch", "es": "Spanisch", "it": "Italienisch"}
 
 
@@ -71,7 +88,7 @@ GEDÄCHTNIS
 - Speichere nur dann etwas dauerhaft (Werkzeug remember), wenn der Benutzer dich ausdrücklich darum bittet.
 - Speichere niemals Passwörter, Zugangsdaten, Gesundheits- oder Finanzdaten.
 """,
-        f"KONTEXT\n- Jetzt: {now.strftime('%A, %d.%m.%Y, %H:%M')} ({now.tzname()}).\n- Zugriffsstufe für Computeraktionen: {access_level}.",
+        f"KONTEXT\n- Jetzt: {_format_now(now)}.\n- Zugriffsstufe für Computeraktionen: {access_level}.",
     ]
 
     if activation_mode == "continuous":

@@ -334,6 +334,8 @@ class LiveSession:
                     language=voice.primary_language if voice.lock_language else None,
                     model_name=settings.ai.stt_model,
                     device=settings.ai.stt_device,
+                    # Erlaubte Sprachen: Hauptsprache + Englisch; alles andere gilt als Fehlerkennung
+                    allowed=tuple(dict.fromkeys((voice.primary_language, "en"))),
                 ),
                 timeout=STT_TIMEOUT_S,
             )
@@ -431,7 +433,13 @@ class LiveSession:
             await self.client.send_event("error", {"message": exc.user_message, "source": "ai"})
             speaker.say("Ich kann mein Sprachmodell gerade nicht erreichen.")
             await speaker.finish()
+        except Exception:  # noqa: BLE001
+            log.exception("Fehler bei der Antwort")
+            self.services.events.add("ai", "Interner Fehler bei der Antwort – Details in logs/jarvis.log", "error")
+            await self.client.send_event("error", {"message": "Ich konnte diese Anfrage nicht verarbeiten.", "source": "ai"})
         finally:
+            if not speaker.task.done():
+                speaker.cancel()
             if spoken:
                 self.services.conversation.add("jarvis", spoken + (" …" if interrupted else ""))
                 if settings.logging.log_transcripts:

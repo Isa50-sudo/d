@@ -10,6 +10,8 @@ from typing import Any
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
+from jarvis.core.text import clean_payload
+
 log = logging.getLogger(__name__)
 
 
@@ -32,7 +34,10 @@ class ClientConnection:
         async with self._send_lock:
             try:
                 if self.websocket.application_state == WebSocketState.CONNECTED:
-                    await self.websocket.send_json(message)
+                    try:
+                        await self.websocket.send_json(message)
+                    except UnicodeEncodeError:
+                        await self.websocket.send_json(clean_payload(message))
             except Exception:  # noqa: BLE001
                 self.closed = True
 
